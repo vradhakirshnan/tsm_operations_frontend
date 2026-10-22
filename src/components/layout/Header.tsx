@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useKitchenStore } from '../../store/kitchenStore';
 import { SSEStatusIndicator } from './SSEStatusIndicator';
@@ -11,6 +12,7 @@ import {
   CheckCheck,
   AlertTriangle,
   Clock,
+  LogOut,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -33,9 +35,15 @@ export const Header: React.FC<HeaderProps> = ({
   onReconnect,
   onToggleSidebar,
 }) => {
-  const { user, activeStation, setActiveStation } = useAuthStore();
+  const navigate = useNavigate();
+  const { user, activeStation, setActiveStation, logout } = useAuthStore();
   const { liveAlerts, unreadAlertCount, markAllAlertsAsRead } = useKitchenStore();
   const [showAlertsDropdown, setShowAlertsDropdown] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <header className="sticky top-0 z-30 h-16 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 lg:px-6 flex items-center justify-between">
@@ -139,15 +147,32 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* User Info / Profile */}
+        {/* User Info / Profile & Sign Out */}
         <div className="flex items-center gap-2.5 pl-2 border-l border-slate-800">
-          <div className="h-8 w-8 rounded-full bg-brand-500/20 border border-brand-500/40 flex items-center justify-center text-brand-400">
-            <ChefHat className="h-4 w-4" />
-          </div>
+          {user?.avatarUrl ? (
+            <img
+              src={user.avatarUrl}
+              alt={user.fullName}
+              className="h-8 w-8 rounded-full border border-brand-500/40 object-cover"
+            />
+          ) : (
+            <div className="h-8 w-8 rounded-full bg-brand-500/20 border border-brand-500/40 flex items-center justify-center text-brand-400">
+              <ChefHat className="h-4 w-4" />
+            </div>
+          )}
           <div className="hidden md:block text-left">
-            <div className="text-xs font-semibold text-slate-200">{user.fullName}</div>
-            <div className="text-[11px] text-slate-400">{user.role}</div>
+            <div className="text-xs font-semibold text-slate-200">
+              {user?.fullName || 'Operations User'}
+            </div>
+            <div className="text-[11px] text-slate-400">{user?.role || 'Executive'}</div>
           </div>
+          <button
+            onClick={handleLogout}
+            className="p-1.5 ml-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+            title="Sign Out"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </header>

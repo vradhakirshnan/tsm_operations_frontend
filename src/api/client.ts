@@ -14,7 +14,7 @@ export const apiClient: AxiosInstance = axios.create({
 // Request Interceptor: Attach authentication token & correlation headers
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('tsm_auth_token') || 'dev_ops_exec_token';
+    const token = localStorage.getItem('tsm_auth_token');
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }

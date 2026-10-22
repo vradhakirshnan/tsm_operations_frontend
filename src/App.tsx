@@ -1,7 +1,10 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useAuthStore } from './store/authStore';
 import { AppLayout } from './components/layout/AppLayout';
+import { LoginPage } from './domains/auth/LoginPage';
+import { AuthCallbackPage } from './domains/auth/AuthCallbackPage';
 import { OperationsOverview } from './domains/overview/OperationsOverview';
 import { CustomerManagementPage } from './domains/customer/CustomerManagementPage';
 import { MenuManagementPage } from './domains/menu/MenuManagementPage';
@@ -21,12 +24,37 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * Route guard that requires an active authentication session.
+ * If unauthenticated, redirects to the /login Google auth screen.
+ */
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuthStore();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+};
+
 export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
-          <Route element={<AppLayout />}>
+          {/* Public Auth Routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
+          {/* Protected Internal Operations Application */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
             <Route index element={<OperationsOverview />} />
             <Route path="customers" element={<CustomerManagementPage />} />
             <Route path="menu" element={<MenuManagementPage />} />
@@ -35,8 +63,10 @@ export const App: React.FC = () => {
             <Route path="inventory" element={<InventoryManagementPage />} />
             <Route path="dispatch" element={<DispatchManagementPage />} />
             <Route path="reconciliation" element={<ReconciliationPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
+
+          {/* Catch-all redirect */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

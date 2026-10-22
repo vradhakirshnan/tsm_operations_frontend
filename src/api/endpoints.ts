@@ -2,6 +2,9 @@ export const API_ENDPOINTS = {
   AUTH: {
     USERS: '/auth/users',
     ROLES: '/auth/roles',
+    GOOGLE_LOGIN: '/auth/google/login',
+    GOOGLE_CALLBACK: '/auth/google/callback',
+    ME: '/auth/me',
   },
   CUSTOMERS: {
     LIST: '/customers/customers',
