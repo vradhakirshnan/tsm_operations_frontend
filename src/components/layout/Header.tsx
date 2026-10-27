@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Clock,
   LogOut,
+  Shield,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -77,6 +78,16 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right: Live SSE Stream status, Alerts Bell, Executive Avatar */}
       <div className="flex items-center gap-3">
+        {user?.role === 'Admin' && (
+          <button
+            onClick={() => navigate('/admin/users')}
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 text-xs font-bold transition-colors"
+          >
+            <Shield className="h-3.5 w-3.5" />
+            <span>Admin Console</span>
+          </button>
+        )}
+
         {/* SSE Stream Status Badge */}
         <SSEStatusIndicator
           connectionState={connectionState}

@@ -1,0 +1,23 @@
+{
+  "projectId": "14443139834611092578",
+  "projectName": "projects/14443139834611092578",
+  "title": "TSM Operations",
+  "deviceType": "MOBILE",
+  "screens": [
+    {
+      "id": "ae773726d7a8496bbb3e091c0b9310c4",
+      "title": "Kitchen Admin - User Management Dashboard",
+      "resourceName": "projects/14443139834611092578/screens/ae773726d7a8496bbb3e091c0b9310c4"
+    },
+    {
+      "id": "5c906c57d3db4d61b0038dca1d2333bb",
+      "title": "Add User Popup - Kitchen Ops Admin",
+      "resourceName": "projects/14443139834611092578/screens/5c906c57d3db4d61b0038dca1d2333bb"
+    },
+    {
+      "id": "e43ecf5ab25049b1aaadf1fa19fd02ae",
+      "title": "Edit Existing User & Confirmation - Kitchen Admin",
+      "resourceName": "projects/14443139834611092578/screens/e43ecf5ab25049b1aaadf1fa19fd02ae"
+    }
+  ]
+}

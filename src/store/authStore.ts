@@ -74,12 +74,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   loginWithDemo: () => {
     const demoUser: UserSession = {
       userId: 1,
-      username: 'ops_lead_demo',
-      fullName: 'Sunil Nair (Demo Lead)',
-      email: 'sunil.nair@tsm-kitchens.com',
-      role: 'Operations Lead',
-      station: 'Central Kitchen - Main Pod',
-      token: 'demo_jwt_token_kitchen_ops_2026',
+      username: 'm.rossi@kitchenops.io',
+      fullName: 'Marco Rossi (Admin)',
+      email: 'm.rossi@kitchenops.io',
+      role: 'Admin',
+      station: 'Central Kitchen #04',
+      token: 'demo_jwt_token_admin_2026',
     };
     localStorage.setItem('tsm_auth_token', demoUser.token);
     localStorage.setItem('tsm_user', JSON.stringify(demoUser));

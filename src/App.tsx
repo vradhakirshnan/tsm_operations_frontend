@@ -6,6 +6,7 @@ import { useAuthStore } from './store/authStore';
 import { AppLayout } from './components/layout/AppLayout';
 import { LoginPage } from './domains/auth/LoginPage';
 import { AuthCallbackPage } from './domains/auth/AuthCallbackPage';
+import { UserManagementDashboard } from './domains/admin/UserManagementDashboard';
 import { OperationsOverview } from './domains/overview/OperationsOverview';
 import { CustomerManagementPage } from './domains/customer/CustomerManagementPage';
 import { MenuManagementPage } from './domains/menu/MenuManagementPage';
@@ -41,6 +42,19 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
+/**
+ * Role-aware root router:
+ * - Admin users automatically land on the Kitchen Admin User Management dashboard (/admin/users)
+ * - Operational executives land on the Operations Overview
+ */
+const RoleAwareIndex: React.FC = () => {
+  const { user } = useAuthStore();
+  if (user?.role === 'Admin') {
+    return <Navigate to="/admin/users" replace />;
+  }
+  return <OperationsOverview />;
+};
+
 export const App: React.FC = () => {
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
@@ -51,7 +65,21 @@ export const App: React.FC = () => {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
-            {/* Protected Internal Operations Application */}
+            {/* Admin Domain Routes (Stitch User Management & Roles) */}
+            <Route
+              path="/admin/users"
+              element={
+                <ProtectedRoute>
+                  <UserManagementDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={<Navigate to="/admin/users" replace />}
+            />
+
+            {/* Operations Hub (Cloud Kitchen Prep, Orders, Inventory, Dispatch) */}
             <Route
               element={
                 <ProtectedRoute>
@@ -59,7 +87,8 @@ export const App: React.FC = () => {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<OperationsOverview />} />
+              <Route index element={<RoleAwareIndex />} />
+              <Route path="ops" element={<OperationsOverview />} />
               <Route path="customers" element={<CustomerManagementPage />} />
               <Route path="menu" element={<MenuManagementPage />} />
               <Route path="orders" element={<OrderManagementPage />} />

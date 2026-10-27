@@ -6,6 +6,10 @@ export const API_ENDPOINTS = {
     GOOGLE_CALLBACK: '/auth/google/callback',
     ME: '/auth/me',
   },
+  ADMIN: {
+    GET_USERS: '/admin/get_users',
+    USERS: '/auth/users',
+  },
   CUSTOMERS: {
     LIST: '/customers/customers',
     CREATE: '/customers/customers',

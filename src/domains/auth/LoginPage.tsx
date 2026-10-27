@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGoogleLogin, GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { useAuthStore } from '../../store/authStore';
+import { setStoredUsersDictionary } from '../../api/usersApi';
 import {
   ChefHat,
   AlertCircle,
@@ -53,18 +54,19 @@ interface VerifiedGoogleUser {
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login, loginWithDemo, isAuthenticated } = useAuthStore();
+  const { user, login, loginWithDemo, isAuthenticated } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [verifiedGoogleUser, setVerifiedGoogleUser] = useState<VerifiedGoogleUser | null>(null);
 
-  // If already authenticated, redirect to main overview
+  // If already authenticated, redirect to appropriate role portal
   React.useEffect(() => {
     if (isAuthenticated) {
-      navigate('/', { replace: true });
+      const destination = user?.role === 'Admin' ? '/admin/users' : '/';
+      navigate(destination, { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, user, navigate]);
 
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
@@ -96,18 +98,25 @@ export const LoginPage: React.FC = () => {
       const sessionToken =
         data.token || data.access_token || payload.id_token || payload.access_token || 'tsm_authenticated';
 
+      if (data.users && typeof data.users === 'object') {
+        setStoredUsersDictionary(data.users);
+      }
+
+      const assignedRole = data.user?.role || data.role || 'Admin';
+
       login({
         userId: data.user?.id || data.user?.user_id || 1,
         username: data.user?.username || payload.email,
         fullName: data.user?.full_name || data.user?.name || payload.name,
         email: payload.email,
         avatarUrl: payload.picture,
-        role: data.user?.role || 'Operations Lead',
-        station: data.user?.station || 'Central Kitchen - Main Pod',
+        role: assignedRole,
+        station: data.user?.station || 'Central Kitchen #04',
         token: sessionToken,
       });
 
-      navigate('/', { replace: true });
+      const destination = assignedRole === 'Admin' ? '/admin/users' : '/';
+      navigate(destination, { replace: true });
     } catch (err: unknown) {
       setIsLoading(false);
       setStatusMessage(null);
@@ -222,11 +231,11 @@ export const LoginPage: React.FC = () => {
       fullName: verifiedGoogleUser.name,
       email: verifiedGoogleUser.email,
       avatarUrl: verifiedGoogleUser.picture,
-      role: 'Operations Lead',
-      station: 'Central Kitchen - Main Pod',
-      token: verifiedGoogleUser.idToken || verifiedGoogleUser.accessToken || 'google_dev_session_token',
+      role: 'Admin',
+      station: 'Central Kitchen #04',
+      token: verifiedGoogleUser.idToken || verifiedGoogleUser.accessToken || 'google_admin_session_token',
     });
-    navigate('/', { replace: true });
+    navigate('/admin/users', { replace: true });
   };
 
   return (
@@ -413,12 +422,12 @@ export const LoginPage: React.FC = () => {
             type="button"
             onClick={() => {
               loginWithDemo();
-              navigate('/', { replace: true });
+              navigate('/admin/users', { replace: true });
             }}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 active:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 text-xs font-semibold transition-all group cursor-pointer"
           >
             <ChefHat className="h-4 w-4 text-brand-400" />
-            <span>Continue as Demo Operations Lead</span>
+            <span>Continue as Kitchen Ops Admin</span>
             <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
           </button>
         </div>
