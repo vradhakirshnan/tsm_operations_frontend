@@ -6,6 +6,8 @@ import {
   CreateUserRequest,
   ApiActionResponse,
   UserDashboardResponse,
+  GetRolesResponse,
+  DEFAULT_ENABLED_ROLES_MOCK,
   normalizeUsersDictionary,
   generateNanoId,
 } from '../domains/admin/types';
@@ -62,6 +64,36 @@ export const STITCH_INITIAL_USERS_MOCK: RawUsersDictionary = {
 };
 
 const LOCAL_STORAGE_USERS_KEY = 'tsm_admin_users_dict';
+const LOCAL_STORAGE_ROLES_KEY = 'tsm_admin_roles_dict';
+
+/**
+ * Retrieves the roles dictionary from localStorage or default mock
+ */
+export function getStoredRoles(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_ROLES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore json error
+  }
+  return DEFAULT_ENABLED_ROLES_MOCK;
+}
+
+/**
+ * Persists the roles dictionary to localStorage
+ */
+export function setStoredRoles(roles: Record<string, string>): void {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_ROLES_KEY, JSON.stringify(roles));
+  } catch {
+    // ignore storage error
+  }
+}
 
 /**
  * Retrieves the users dictionary from localStorage or default mock
@@ -137,8 +169,9 @@ export async function getUserDashboardApi(): Promise<{
 
     if (Object.keys(rawDict).length > 0) {
       setStoredUsersDictionary(rawDict);
+      const rolesMap = getStoredRoles();
       return {
-        users: normalizeUsersDictionary(rawDict),
+        users: normalizeUsersDictionary(rawDict, rolesMap),
         rawDictionary: rawDict,
         dashboardData: data.dashboard_data,
         role: data.role || (data.roles ? data.roles[0] : undefined),
@@ -151,8 +184,9 @@ export async function getUserDashboardApi(): Promise<{
 
   // Fallback to local stored dictionary
   const fallbackDict = getStoredUsersDictionary();
+  const fallbackRoles = getStoredRoles();
   return {
-    users: normalizeUsersDictionary(fallbackDict),
+    users: normalizeUsersDictionary(fallbackDict, fallbackRoles),
     rawDictionary: fallbackDict,
     role: 'Admin',
     logout: false,
@@ -405,4 +439,65 @@ export async function logoutApi(): Promise<void> {
     localStorage.removeItem('tsm_auth_token');
     localStorage.removeItem('tsm_user');
   }
+}
+
+/**
+ * Calls api/v1/admin/get_roles
+ * Request (with JWT Bearer token in header):
+ * {
+ *   "role_type": "enabled"
+ * }
+ * Response:
+ * {
+ *   "enabled": {
+ *     "role_id_1": "role_name_1",
+ *     "role_id_2": "role_name_2"
+ *   },
+ *   "disabled": {}
+ * }
+ */
+export async function getAdminRolesApi(
+  role_type: string = 'enabled'
+): Promise<GetRolesResponse> {
+  try {
+    const response = await apiClient.post<GetRolesResponse>(
+      API_ENDPOINTS.ADMIN.GET_ROLES,
+      { role_type },
+      { timeout: 6000 }
+    );
+
+    if (response.data && response.data.enabled && typeof response.data.enabled === 'object') {
+      setStoredRoles(response.data.enabled);
+      return response.data;
+    }
+  } catch (err) {
+    // Fallback: try GET with query params if backend FastAPI router uses GET
+    try {
+      const getResponse = await apiClient.get<GetRolesResponse>(
+        API_ENDPOINTS.ADMIN.GET_ROLES,
+        {
+          params: { role_type },
+          timeout: 4000,
+        }
+      );
+      if (
+        getResponse.data &&
+        getResponse.data.enabled &&
+        typeof getResponse.data.enabled === 'object'
+      ) {
+        setStoredRoles(getResponse.data.enabled);
+        return getResponse.data;
+      }
+    } catch {
+      console.warn('Backend get_roles offline or unreachable; using local roles fallback.');
+    }
+  }
+
+  // Fallback to cached or mock roles
+  const cachedRoles = getStoredRoles();
+  return {
+    enabled: cachedRoles,
+    disabled: {},
+    status: true,
+  };
 }

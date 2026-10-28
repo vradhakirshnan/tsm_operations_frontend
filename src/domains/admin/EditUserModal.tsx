@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   AlertTriangle,
@@ -15,8 +15,10 @@ import {
   History,
   AlertCircle,
   Plus,
+  Loader2,
 } from 'lucide-react';
-import { AdminUser, AVAILABLE_ROLES } from './types';
+import { AdminUser, DEFAULT_ENABLED_ROLES_MOCK, resolveRoleId, resolveRoleName } from './types';
+import { getAdminRolesApi } from '../../api/usersApi';
 
 interface EditUserModalProps {
   isOpen: boolean;
@@ -34,43 +36,113 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
   onToggleStatus,
 }) => {
   const [name, setName] = useState('');
-  const [roles, setRoles] = useState<string[]>([]);
+  const [rolesMap, setRolesMap] = useState<Record<string, string>>(
+    DEFAULT_ENABLED_ROLES_MOCK
+  );
+  const [assignedRoleIds, setAssignedRoleIds] = useState<string[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [editMode, setEditMode] = useState(true);
   const [showConfirmDisable, setShowConfirmDisable] = useState(false);
   const [roleSearch, setRoleSearch] = useState('');
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const [isLoadingRoles, setIsLoadingRoles] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
 
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Fetch enabled roles from backend and initialize user state
   useEffect(() => {
-    if (user) {
+    if (isOpen && user) {
       setName(user.userName);
-      setRoles([...user.roles]);
       setEnabled(user.enabled);
       setEditMode(true);
       setShowConfirmDisable(false);
       setSavedFeedback(false);
+      setRoleSearch('');
+      setShowRoleDropdown(false);
+
+      const fetchRoles = async () => {
+        setIsLoadingRoles(true);
+        try {
+          const res = await getAdminRolesApi('enabled');
+          const latestRoles = res?.enabled && Object.keys(res.enabled).length > 0
+            ? res.enabled
+            : DEFAULT_ENABLED_ROLES_MOCK;
+          setRolesMap(latestRoles);
+
+          // Resolve user's existing roles to role IDs
+          const initialIds = (user.roles || []).map((r) =>
+            resolveRoleId(r, latestRoles)
+          );
+          setAssignedRoleIds(initialIds);
+        } catch (err) {
+          console.warn('Failed to fetch enabled roles for Edit User modal:', err);
+          const initialIds = (user.roles || []).map((r) =>
+            resolveRoleId(r, DEFAULT_ENABLED_ROLES_MOCK)
+          );
+          setAssignedRoleIds(initialIds);
+        } finally {
+          setIsLoadingRoles(false);
+        }
+      };
+
+      fetchRoles();
     }
-  }, [user]);
+  }, [isOpen, user]);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowRoleDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   if (!isOpen || !user) return null;
+
+  // Initial user role IDs for detecting changes
+  const initialRoleIds = (user.roles || []).map((r) => resolveRoleId(r, rolesMap));
 
   // Check if there are unsaved changes
   const hasChanges =
     name.trim() !== user.userName ||
     enabled !== user.enabled ||
-    JSON.stringify(roles.slice().sort()) !==
-      JSON.stringify(user.roles.slice().sort());
+    JSON.stringify([...assignedRoleIds].sort()) !==
+      JSON.stringify([...initialRoleIds].sort());
 
-  const handleRemoveRole = (roleToRemove: string) => {
+  // Available roles are all enabled roles EXCLUDING already assigned ones
+  // For edit user: we remove all roles already assigned and show only the new ones
+  const availableRoleEntries = Object.entries(rolesMap).filter(
+    ([roleId]) => !assignedRoleIds.includes(roleId)
+  );
+
+  // Filter available suggestions by search
+  const filteredRoleSuggestions = availableRoleEntries.filter(
+    ([roleId, roleName]) => {
+      const q = roleSearch.toLowerCase().trim();
+      return (
+        roleName.toLowerCase().includes(q) || roleId.toLowerCase().includes(q)
+      );
+    }
+  );
+
+  // When a user removes a role, it immediately returns to the available roles dropdown
+  const handleRemoveRole = (roleIdToRemove: string) => {
     if (!editMode) return;
-    setRoles((prev) => prev.filter((r) => r !== roleToRemove));
+    setAssignedRoleIds((prev) => prev.filter((id) => id !== roleIdToRemove));
   };
 
-  const handleAddRole = (roleToAdd: string) => {
-    if (!roles.includes(roleToAdd)) {
-      setRoles((prev) => [...prev, roleToAdd]);
+  // When a user adds a role from the dropdown, it gets assigned and removed from dropdown
+  const handleAddRole = (roleIdToAdd: string) => {
+    if (!assignedRoleIds.includes(roleIdToAdd)) {
+      setAssignedRoleIds((prev) => [...prev, roleIdToAdd]);
     }
     setRoleSearch('');
     setShowRoleDropdown(false);
@@ -78,7 +150,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
 
   const handleReset = () => {
     setName(user.userName);
-    setRoles([...user.roles]);
+    setAssignedRoleIds(initialRoleIds);
     setEnabled(user.enabled);
     setShowConfirmDisable(false);
   };
@@ -98,10 +170,11 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
     if (!name.trim()) return;
     setIsSaving(true);
     try {
+      // Send assigned role IDs to backend
       await onUpdateUser({
         ...user,
         userName: name.trim(),
-        roles,
+        roles: assignedRoleIds,
         enabled,
       });
       setSavedFeedback(true);
@@ -113,12 +186,6 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
       setIsSaving(false);
     }
   };
-
-  const filteredRoleSuggestions = AVAILABLE_ROLES.filter(
-    (role) =>
-      !roles.includes(role) &&
-      role.toLowerCase().includes(roleSearch.toLowerCase().trim())
-  );
 
   const getRoleIcon = (roleName: string) => {
     const lower = roleName.toLowerCase();
@@ -159,9 +226,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
                 />
                 <span
                   className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full ring-2 ring-surface-container-low ${
-                    enabled
-                      ? 'bg-tertiary-fixed-dim'
-                      : 'bg-outline'
+                    enabled ? 'bg-tertiary-fixed-dim' : 'bg-outline'
                   }`}
                 />
               </div>
@@ -191,9 +256,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-surface-container-highest text-on-surface">
                 <span
                   className={`w-2 h-2 rounded-full ${
-                    enabled
-                      ? 'bg-tertiary-fixed-dim animate-pulse'
-                      : 'bg-outline'
+                    enabled ? 'bg-tertiary-fixed-dim animate-pulse' : 'bg-outline'
                   }`}
                 />
                 <span>{enabled ? 'Active / Enabled' : 'Disabled / Inactive'}</span>
@@ -349,45 +412,63 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
               <label className="font-semibold text-on-surface">
                 Assigned Operational Roles
               </label>
-              <span className="text-on-surface-variant font-bold text-[11px]">
-                {roles.length} Active
-              </span>
+              <div className="flex items-center gap-2">
+                {isLoadingRoles && (
+                  <span className="inline-flex items-center gap-1 text-[11px] text-secondary">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <span>Loading roles...</span>
+                  </span>
+                )}
+                <span className="text-on-surface-variant font-bold text-[11px]">
+                  {assignedRoleIds.length} Assigned
+                </span>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2 p-2.5 bg-surface-container-low rounded-xl min-h-[46px] items-center border border-surface-container">
-              {roles.length === 0 ? (
+              {assignedRoleIds.length === 0 ? (
                 <span className="text-xs text-outline italic px-1">
                   No active station roles assigned.
                 </span>
               ) : (
-                roles.map((role) => (
-                  <div
-                    key={role}
-                    className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-lg bg-primary-container text-on-primary text-xs font-medium shadow-sm"
-                  >
-                    {getRoleIcon(role)}
-                    <span>{role}</span>
-                    {editMode && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveRole(role)}
-                        className="ml-1 w-4 h-4 rounded flex items-center justify-center hover:bg-error hover:text-on-error transition-colors text-on-primary/70"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                ))
+                assignedRoleIds.map((roleId) => {
+                  const roleName = rolesMap[roleId] || resolveRoleName(roleId, rolesMap);
+                  return (
+                    <div
+                      key={roleId}
+                      className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-lg bg-primary-container text-on-primary text-xs font-medium shadow-sm transition-all"
+                    >
+                      {getRoleIcon(roleName)}
+                      <span>{roleName}</span>
+                      {editMode && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRole(roleId)}
+                          className="ml-1 w-4 h-4 rounded flex items-center justify-center hover:bg-error hover:text-on-error transition-colors text-on-primary/70"
+                          title={`Remove ${roleName} (returns to available roles)`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
 
           {/* Add Roles Input with Autocomplete (Only if editMode) */}
           {editMode && (
-            <div className="space-y-1 relative">
-              <label className="font-semibold text-xs text-on-surface">
-                Add Roles
-              </label>
+            <div className="space-y-1 relative" ref={dropdownRef}>
+              <div className="flex items-center justify-between text-xs">
+                <label className="font-semibold text-on-surface">
+                  Available Roles to Add ({availableRoleEntries.length})
+                </label>
+                <span className="text-[10px] text-on-surface-variant">
+                  api/v1/admin/get_roles
+                </span>
+              </div>
+
               <input
                 type="text"
                 value={roleSearch}
@@ -396,7 +477,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
                   setRoleSearch(e.target.value);
                   setShowRoleDropdown(true);
                 }}
-                placeholder="Type to assign role (e.g. Expediter, Sous Chef)..."
+                placeholder="Search to add unassigned role (e.g. Sauté Lead, Expediter)..."
                 className="w-full h-11 px-3 rounded-xl bg-surface-container-lowest text-on-surface font-body text-sm border border-outline-variant/50 focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 focus:outline-none transition-all placeholder:text-outline-variant"
               />
 
@@ -404,20 +485,27 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
                 <div className="w-full bg-surface-container-lowest rounded-xl shadow-xl mt-1 overflow-hidden border border-surface-container z-20 max-h-44 overflow-y-auto divide-y divide-surface-container-low">
                   {filteredRoleSuggestions.length === 0 ? (
                     <div className="p-3 text-xs text-on-surface-variant text-center">
-                      No matching roles available
+                      {availableRoleEntries.length === 0
+                        ? 'All available roles are currently assigned.'
+                        : 'No unassigned roles match your search.'}
                     </div>
                   ) : (
-                    filteredRoleSuggestions.map((role) => (
+                    filteredRoleSuggestions.map(([roleId, roleName]) => (
                       <div
-                        key={role}
+                        key={roleId}
                         className="flex items-center justify-between px-3.5 py-2 hover:bg-surface-container-low transition-colors group cursor-pointer"
-                        onClick={() => handleAddRole(role)}
+                        onClick={() => handleAddRole(roleId)}
                       >
                         <div className="flex items-center gap-2">
-                          {getRoleIcon(role)}
-                          <span className="text-xs font-semibold text-primary">
-                            {role}
-                          </span>
+                          {getRoleIcon(roleName)}
+                          <div className="flex flex-col">
+                            <span className="text-xs font-semibold text-primary">
+                              {roleName}
+                            </span>
+                            <span className="text-[10px] text-outline font-mono">
+                              {roleId}
+                            </span>
+                          </div>
                         </div>
                         <button
                           type="button"

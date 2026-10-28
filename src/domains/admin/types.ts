@@ -61,7 +61,7 @@ export interface UpdateUserDetailsRequest {
 
 /**
  * Common response from create_user and update_user APIs:
- * { "status": true/false }
+ * { "status": true/false, "message": string }
  */
 export interface ApiActionResponse {
   status: boolean;
@@ -85,26 +85,100 @@ export interface UserDashboardResponse {
 }
 
 /**
- * Available station and kitchen role authorities in the Culinary Registry
+ * Request payload for api/v1/admin/get_roles
  */
-export const AVAILABLE_ROLES = [
-  'Operations Manager',
-  'Kitchen Management',
-  'Station Lead',
-  'Operations Executive',
-  'Sauté Lead',
-  'Grill Station',
-  'Prep Station Lead',
-  'Pass Expediter',
-  'Inventory Specialist',
-  'Inventory Admin',
-  'Sous Chef',
-  'Safety & HACCP Officer',
-  'Management',
-  'Delivery Team',
-] as const;
+export interface GetRolesRequest {
+  role_type?: 'enabled' | 'disabled' | string;
+}
 
-export type AvailableRole = (typeof AVAILABLE_ROLES)[number];
+/**
+ * Response payload from api/v1/admin/get_roles
+ * {
+ *   "enabled": {
+ *     "role_id_1": "role_name_1",
+ *     "role_id_2": "role_name_2"
+ *   },
+ *   "disabled": {}
+ * }
+ */
+export interface GetRolesResponse {
+  enabled: Record<string, string>;
+  disabled?: Record<string, string>;
+  status?: boolean;
+  message?: string;
+}
+
+/**
+ * Structure of a single role item with its ID and human-readable Name
+ */
+export interface RoleItem {
+  id: string;
+  name: string;
+}
+
+/**
+ * Default fallback enabled roles dictionary for offline dev mode
+ */
+export const DEFAULT_ENABLED_ROLES_MOCK: Record<string, string> = {
+  role_ops_mgr: 'Operations Manager',
+  role_kitch_mgmt: 'Kitchen Management',
+  role_station_lead: 'Station Lead',
+  role_ops_exec: 'Operations Executive',
+  role_saute_lead: 'Sauté Lead',
+  role_grill_stn: 'Grill Station',
+  role_prep_lead: 'Prep Station Lead',
+  role_expediter: 'Pass Expediter',
+  role_inv_spec: 'Inventory Specialist',
+  role_inv_admin: 'Inventory Admin',
+  role_sous_chef: 'Sous Chef',
+  role_haccp_off: 'Safety & HACCP Officer',
+  role_mgmt: 'Management',
+  role_delivery: 'Delivery Team',
+};
+
+/**
+ * List of available role names for backwards compatibility
+ */
+export const AVAILABLE_ROLES: string[] = Object.values(DEFAULT_ENABLED_ROLES_MOCK);
+
+/**
+ * Resolves a role ID or name to its human-readable display name using the roles dictionary
+ */
+export function resolveRoleName(
+  roleIdOrName: string,
+  rolesMap: Record<string, string> = DEFAULT_ENABLED_ROLES_MOCK
+): string {
+  if (rolesMap[roleIdOrName]) {
+    return rolesMap[roleIdOrName];
+  }
+  // Check if it already is one of the role names
+  const matchEntry = Object.entries(rolesMap).find(
+    ([, name]) => name.toLowerCase() === roleIdOrName.toLowerCase()
+  );
+  if (matchEntry) {
+    return matchEntry[1];
+  }
+  return roleIdOrName;
+}
+
+/**
+ * Resolves a role name or ID to its corresponding role ID
+ */
+export function resolveRoleId(
+  roleNameOrId: string,
+  rolesMap: Record<string, string> = DEFAULT_ENABLED_ROLES_MOCK
+): string {
+  if (rolesMap[roleNameOrId]) {
+    return roleNameOrId;
+  }
+  const matchEntry = Object.entries(rolesMap).find(
+    ([, name]) => name.toLowerCase() === roleNameOrId.toLowerCase()
+  );
+  if (matchEntry) {
+    return matchEntry[0];
+  }
+  return roleNameOrId;
+}
 
 /**
  * Generates a nano ID style unique string for users (e.g., "usr_8492")
@@ -121,7 +195,10 @@ export function generateNanoId(prefix: string = 'usr'): string {
 /**
  * Normalizes backend dictionary into a sorted, structured array of AdminUser
  */
-export function normalizeUsersDictionary(dict: RawUsersDictionary): AdminUser[] {
+export function normalizeUsersDictionary(
+  dict: RawUsersDictionary,
+  rolesMap: Record<string, string> = DEFAULT_ENABLED_ROLES_MOCK
+): AdminUser[] {
   if (!dict || typeof dict !== 'object') return [];
 
   return Object.entries(dict).map(([userId, data]) => {
@@ -131,16 +208,20 @@ export function normalizeUsersDictionary(dict: RawUsersDictionary): AdminUser[] 
       data.enabled === 'true' ||
       data.enabled === '1';
 
+    const rawRoles = Array.isArray(data.roles) ? data.roles : [];
+    // Display roles using their mapped role names
+    const displayRoles = rawRoles.map((r) => resolveRoleName(r, rolesMap));
+
     return {
       userId,
       userName: data.user_name || 'Unnamed Staff',
       userEmail: data.user_email || '',
       enabled: isEnabled,
-      roles: Array.isArray(data.roles) ? data.roles : [],
+      roles: displayRoles,
       avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
         data.user_name || 'Staff'
       )}&backgroundColor=1e293b,091426&textColor=ffffff`,
-      station: data.roles?.[0] || 'Central Kitchen #04',
+      station: displayRoles[0] || 'Central Kitchen #04',
       lastUsed: isEnabled ? 'Today, 10:42 AM' : 'Inactive',
     };
   });

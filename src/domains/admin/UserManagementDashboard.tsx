@@ -6,9 +6,10 @@ import {
   createUserApi,
   updateUserStatusApi,
   updateUserDetailsApi,
+  getAdminRolesApi,
   logoutApi,
 } from '../../api/usersApi';
-import { AdminUser } from './types';
+import { AdminUser, DEFAULT_ENABLED_ROLES_MOCK, resolveRoleId } from './types';
 import { AddUserModal } from './AddUserModal';
 import { EditUserModal } from './EditUserModal';
 import { UserActionSheet } from './UserActionSheet';
@@ -32,6 +33,7 @@ import {
   LogOut,
   RefreshCw,
   Users,
+  Loader2,
 } from 'lucide-react';
 
 export const UserManagementDashboard: React.FC = () => {
@@ -39,7 +41,11 @@ export const UserManagementDashboard: React.FC = () => {
   const { user, activeStation, setActiveStation, logout } = useAuthStore();
 
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [rolesMap, setRolesMap] = useState<Record<string, string>>(
+    DEFAULT_ENABLED_ROLES_MOCK
+  );
   const [isLoading, setIsLoading] = useState(true);
+  const [isRolesLoading, setIsRolesLoading] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'lastUsed' | 'id'>('name');
@@ -78,6 +84,21 @@ export const UserManagementDashboard: React.FC = () => {
     }
   };
 
+  // Load enabled roles via api/v1/admin/get_roles
+  const fetchRoles = async () => {
+    setIsRolesLoading(true);
+    try {
+      const res = await getAdminRolesApi('enabled');
+      if (res?.enabled && Object.keys(res.enabled).length > 0) {
+        setRolesMap(res.enabled);
+      }
+    } catch (err) {
+      console.warn('Failed to load roles in role tab:', err);
+    } finally {
+      setIsRolesLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -112,9 +133,11 @@ export const UserManagementDashboard: React.FC = () => {
   const handleUpdateUserDetails = async (updated: AdminUser) => {
     setIsActionLoading(true);
     try {
+      // Ensure role IDs are sent to the backend
+      const roleIds = updated.roles.map((r) => resolveRoleId(r, rolesMap));
       const res = await updateUserDetailsApi(updated.userId, {
         user_name: updated.userName,
-        roles: updated.roles,
+        roles: roleIds,
       });
       setStatusPopup({
         isOpen: true,
@@ -375,7 +398,10 @@ export const UserManagementDashboard: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab('roles')}
+                onClick={() => {
+                  setActiveTab('roles');
+                  fetchRoles();
+                }}
                 className={`flex items-center justify-center py-1.5 rounded-lg text-xs font-bold transition-all ${
                   activeTab === 'roles'
                     ? 'bg-surface-container-lowest text-on-surface shadow-sm font-headline'
@@ -408,50 +434,90 @@ export const UserManagementDashboard: React.FC = () => {
             fullScreen={false}
           />
         ) : activeTab === 'roles' ? (
-          /* Role Management View */
-          <div className="bg-surface-container-lowest rounded-2xl p-6 sm:p-8 border border-surface-container shadow-sm space-y-4">
-            <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-secondary" />
-              <h2 className="font-headline text-lg font-bold text-primary">
-                Kitchen Station Role Matrix
-              </h2>
-            </div>
-            <p className="text-xs text-on-surface-variant max-w-xl">
-              Configured roles define line-fire access, inventory write-offs,
-              dispatch handover authority, and HACCP compliance auditing across
-              stations.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
-              {[
-                { title: 'Operations Manager', desc: 'Full station dispatch & shift auditing', count: 1 },
-                { title: 'Station Lead', desc: 'Sauté, Grill, and Prep line management', count: 3 },
-                { title: 'Operations Executive', desc: 'Order fulfillment and ticket preparation', count: 4 },
-                { title: 'Inventory Admin', desc: 'Cold storage, dry stock & par levels', count: 1 },
-                { title: 'Safety & HACCP Officer', desc: 'Temperature inspection & compliance', count: 1 },
-                { title: 'Kitchen Management', desc: 'Multi-pod operational oversight', count: 2 },
-              ].map((r) => (
-                <div
-                  key={r.title}
-                  className="p-4 rounded-xl bg-surface-container-low border border-surface-container flex flex-col justify-between"
-                >
-                  <div>
-                    <span className="font-headline text-sm font-bold text-primary">
-                      {r.title}
-                    </span>
-                    <p className="text-xs text-on-surface-variant mt-1">
-                      {r.desc}
-                    </p>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-surface-container flex items-center justify-between text-xs">
-                    <span className="text-[11px] text-outline">Assigned Crew:</span>
-                    <span className="font-bold text-secondary font-mono">
-                      {r.count} users
-                    </span>
-                  </div>
+          /* Role Management View - Rendered dynamically via api/v1/admin/get_roles */
+          <div className="bg-surface-container-lowest rounded-2xl p-6 sm:p-8 border border-surface-container shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-surface-container pb-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-secondary" />
+                  <h2 className="font-headline text-lg font-bold text-primary">
+                    Kitchen Station Role Matrix
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-secondary-container/20 text-secondary border border-secondary-container/30">
+                    {Object.keys(rolesMap).length} Active Roles
+                  </span>
                 </div>
-              ))}
+                <p className="text-xs text-on-surface-variant max-w-xl mt-1">
+                  Configured roles fetched via <code className="font-mono text-secondary font-bold">api/v1/admin/get_roles</code>. Defines line-fire access, inventory write-offs, station authority, and shift permissions across pod terminals.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={fetchRoles}
+                disabled={isRolesLoading}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface-container-low hover:bg-surface-container text-xs font-bold text-on-surface border border-surface-container transition-all shadow-sm active:scale-95 disabled:opacity-50 self-start sm:self-auto"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 text-secondary ${isRolesLoading ? 'animate-spin' : ''}`} />
+                <span>{isRolesLoading ? 'Refreshing Roles...' : 'Refresh Roles'}</span>
+              </button>
             </div>
+
+            {isRolesLoading ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="h-8 w-8 text-secondary animate-spin" />
+                <p className="text-xs text-on-surface-variant font-medium">
+                  Calling api/v1/admin/get_roles with Bearer token...
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {Object.entries(rolesMap).map(([roleId, roleName]) => {
+                  const assignedCount = users.filter((u) =>
+                    u.roles.some(
+                      (r) =>
+                        resolveRoleId(r, rolesMap) === roleId ||
+                        r.toLowerCase() === roleName.toLowerCase()
+                    )
+                  ).length;
+
+                  return (
+                    <div
+                      key={roleId}
+                      className="p-4 rounded-xl bg-surface-container-low border border-surface-container flex flex-col justify-between hover:border-secondary-container/50 transition-all group shadow-sm"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 rounded-lg bg-surface-container-lowest text-secondary shadow-xs">
+                              {getRoleIcon(roleName)}
+                            </div>
+                            <span className="font-headline text-sm font-bold text-primary group-hover:text-secondary transition-colors">
+                              {roleName}
+                            </span>
+                          </div>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-surface-container-high text-on-surface-variant">
+                            {roleId}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex items-center gap-1.5 text-xs text-on-surface-variant">
+                          <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+                          <span className="text-[11px]">Enabled in Central Registry</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-surface-container flex items-center justify-between text-xs">
+                        <span className="text-[11px] text-outline">Assigned Crew:</span>
+                        <span className="font-bold text-secondary font-mono px-2 py-0.5 rounded bg-surface-container-lowest">
+                          {assignedCount} {assignedCount === 1 ? 'user' : 'users'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : (
           /* User Management View (Stitch Design Matching) */
