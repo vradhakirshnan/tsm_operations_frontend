@@ -160,57 +160,108 @@ export async function getUserDashboardApi(): Promise<{
 }
 
 /**
+ * Helper to safely extract boolean status and message from backend response
+ */
+function parseApiStatusResponse(data: any): { isSuccess: boolean; message: string } {
+  const isSuccess =
+    data?.status === true ||
+    data?.status === 'True' ||
+    data?.status === 'true';
+
+  const message =
+    typeof data?.message === 'string' && data.message.trim().length > 0
+      ? data.message.trim()
+      : typeof data?.detail === 'string' && data.detail.trim().length > 0
+      ? data.detail.trim()
+      : isSuccess
+      ? 'Action completed successfully.'
+      : 'Action failed. Please check inputs and try again.';
+
+  return { isSuccess, message };
+}
+
+/**
  * Calls api/v1/admin/create_user
  * Request: { user_email, user_name, roles }
- * Response: { status: True/False }
+ * Response: { status: True/False, message: "..." }
  */
 export async function createUserApi(payload: CreateUserRequest): Promise<ApiActionResponse> {
-  let backendSuccess = false;
-  let backendMessage = '';
-
   try {
     const response = await apiClient.post<ApiActionResponse>(
       API_ENDPOINTS.ADMIN.CREATE_USER,
       payload,
       { timeout: 6000 }
     );
-    if (response.data && response.data.status !== false) {
-      backendSuccess = true;
-      backendMessage = response.data.message || 'User successfully created in backend.';
+
+    const { isSuccess, message } = parseApiStatusResponse(response.data);
+
+    if (isSuccess) {
+      // Synchronize local fallback dictionary
+      const currentDict = getStoredUsersDictionary();
+      const nanoId = generateNanoId('usr');
+      currentDict[nanoId] = {
+        user_name: payload.user_name,
+        user_email: payload.user_email,
+        enabled: 'True',
+        roles: payload.roles,
+      };
+      setStoredUsersDictionary(currentDict);
+
+      return {
+        status: true,
+        message: message || 'User successfully provisioned.',
+      };
+    } else {
+      // Backend returned status: False with an explanatory message
+      return {
+        status: false,
+        message,
+      };
     }
   } catch (err: any) {
-    backendMessage = err.response?.data?.detail || err.message || 'Network error calling create_user API';
+    const errData = err.response?.data;
+    const backendMessage =
+      typeof errData?.message === 'string'
+        ? errData.message
+        : typeof errData?.detail === 'string'
+        ? errData.detail
+        : null;
+
+    // If the backend responded with an HTTP error and message, display that failure message
+    if (backendMessage) {
+      return {
+        status: false,
+        message: backendMessage,
+      };
+    }
+
+    // Only if backend server is completely offline / unreachable during local dev:
+    const currentDict = getStoredUsersDictionary();
+    const nanoId = generateNanoId('usr');
+    currentDict[nanoId] = {
+      user_name: payload.user_name,
+      user_email: payload.user_email,
+      enabled: 'True',
+      roles: payload.roles,
+    };
+    setStoredUsersDictionary(currentDict);
+
+    return {
+      status: true,
+      message: 'User provisioned in local offline mode (backend server unreachable).',
+    };
   }
-
-  // Optimistically or fallback update local dictionary so UI always stays functional
-  const currentDict = getStoredUsersDictionary();
-  const nanoId = generateNanoId('usr');
-  currentDict[nanoId] = {
-    user_name: payload.user_name,
-    user_email: payload.user_email,
-    enabled: 'True',
-    roles: payload.roles,
-  };
-  setStoredUsersDictionary(currentDict);
-
-  return {
-    status: true,
-    message: backendSuccess ? backendMessage : 'User provisioned locally (backend was offline).',
-  };
 }
 
 /**
  * Calls api/v1/admin/update_user to enable or disable a user
  * Request: { user_id, enabled } (backend ignores all other keys)
- * Response: { status: True/False }
+ * Response: { status: True/False, message: "..." }
  */
 export async function updateUserStatusApi(
   userId: string,
   enabled: boolean
 ): Promise<ApiActionResponse> {
-  let backendSuccess = false;
-  let backendMessage = '';
-
   try {
     const response = await apiClient.post<ApiActionResponse>(
       API_ENDPOINTS.ADMIN.UPDATE_USER,
@@ -220,33 +271,59 @@ export async function updateUserStatusApi(
       },
       { timeout: 6000 }
     );
-    if (response.data && response.data.status !== false) {
-      backendSuccess = true;
-      backendMessage = response.data.message || 'User status updated successfully.';
+
+    const { isSuccess, message } = parseApiStatusResponse(response.data);
+
+    if (isSuccess) {
+      const currentDict = getStoredUsersDictionary();
+      if (currentDict[userId]) {
+        currentDict[userId].enabled = enabled ? 'True' : 'False';
+        setStoredUsersDictionary(currentDict);
+      }
+      return {
+        status: true,
+        message: message || `User status set to ${enabled ? 'Active' : 'Disabled'}.`,
+      };
+    } else {
+      // Backend returned status: False with explanatory message
+      return {
+        status: false,
+        message,
+      };
     }
   } catch (err: any) {
-    backendMessage = err.response?.data?.detail || err.message || 'Network error updating user status';
-  }
+    const errData = err.response?.data;
+    const backendMessage =
+      typeof errData?.message === 'string'
+        ? errData.message
+        : typeof errData?.detail === 'string'
+        ? errData.detail
+        : null;
 
-  // Update local dictionary
-  const currentDict = getStoredUsersDictionary();
-  if (currentDict[userId]) {
-    currentDict[userId].enabled = enabled ? 'True' : 'False';
-    setStoredUsersDictionary(currentDict);
-  }
+    if (backendMessage) {
+      return {
+        status: false,
+        message: backendMessage,
+      };
+    }
 
-  return {
-    status: true,
-    message: backendSuccess
-      ? backendMessage
-      : `User status set to ${enabled ? 'Active' : 'Disabled'} locally.`,
-  };
+    // Offline dev fallback
+    const currentDict = getStoredUsersDictionary();
+    if (currentDict[userId]) {
+      currentDict[userId].enabled = enabled ? 'True' : 'False';
+      setStoredUsersDictionary(currentDict);
+    }
+    return {
+      status: true,
+      message: `User status set to ${enabled ? 'Active' : 'Disabled'} locally (backend unreachable).`,
+    };
+  }
 }
 
 /**
  * Calls api/v1/admin/update_user to edit user roles and name
  * Request: { user_id, roles, user_name } (email cannot be changed)
- * Response: { status: True/False }
+ * Response: { status: True/False, message: "..." }
  */
 export async function updateUserDetailsApi(
   userId: string,
@@ -255,9 +332,6 @@ export async function updateUserDetailsApi(
     roles: string[];
   }
 ): Promise<ApiActionResponse> {
-  let backendSuccess = false;
-  let backendMessage = '';
-
   try {
     const response = await apiClient.post<ApiActionResponse>(
       API_ENDPOINTS.ADMIN.UPDATE_USER,
@@ -268,26 +342,55 @@ export async function updateUserDetailsApi(
       },
       { timeout: 6000 }
     );
-    if (response.data && response.data.status !== false) {
-      backendSuccess = true;
-      backendMessage = response.data.message || 'User details updated successfully.';
+
+    const { isSuccess, message } = parseApiStatusResponse(response.data);
+
+    if (isSuccess) {
+      const currentDict = getStoredUsersDictionary();
+      if (currentDict[userId]) {
+        currentDict[userId].user_name = payload.user_name;
+        currentDict[userId].roles = payload.roles;
+        setStoredUsersDictionary(currentDict);
+      }
+      return {
+        status: true,
+        message: message || 'User details updated successfully.',
+      };
+    } else {
+      // Backend returned status: False with explanatory message
+      return {
+        status: false,
+        message,
+      };
     }
   } catch (err: any) {
-    backendMessage = err.response?.data?.detail || err.message || 'Network error updating user details';
-  }
+    const errData = err.response?.data;
+    const backendMessage =
+      typeof errData?.message === 'string'
+        ? errData.message
+        : typeof errData?.detail === 'string'
+        ? errData.detail
+        : null;
 
-  // Update local dictionary
-  const currentDict = getStoredUsersDictionary();
-  if (currentDict[userId]) {
-    currentDict[userId].user_name = payload.user_name;
-    currentDict[userId].roles = payload.roles;
-    setStoredUsersDictionary(currentDict);
-  }
+    if (backendMessage) {
+      return {
+        status: false,
+        message: backendMessage,
+      };
+    }
 
-  return {
-    status: true,
-    message: backendSuccess ? backendMessage : 'User details saved locally.',
-  };
+    // Offline dev fallback
+    const currentDict = getStoredUsersDictionary();
+    if (currentDict[userId]) {
+      currentDict[userId].user_name = payload.user_name;
+      currentDict[userId].roles = payload.roles;
+      setStoredUsersDictionary(currentDict);
+    }
+    return {
+      status: true,
+      message: 'User details updated locally (backend unreachable).',
+    };
+  }
 }
 
 /**

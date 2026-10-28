@@ -124,6 +124,14 @@ export const LoginPage: React.FC = () => {
       });
 
       const data = response.data;
+
+      // Handle backend status: false with message
+      if (data && (data.status === false || data.status === 'False')) {
+        setIsLoading(false);
+        setErrorMessage(data.message || 'Authentication rejected by backend.');
+        return;
+      }
+
       const sessionToken =
         data.token || data.access_token || payload.id_token || payload.access_token || 'tsm_authenticated';
 
@@ -150,9 +158,12 @@ export const LoginPage: React.FC = () => {
       setIsLoading(false);
       setStatusMessage(null);
       const isAxiosErr = axios.isAxiosError(err);
+      const errData = isAxiosErr ? err.response?.data : null;
       const detail =
-        isAxiosErr && err.response?.data?.detail
-          ? String(err.response.data.detail)
+        typeof errData?.message === 'string'
+          ? errData.message
+          : typeof errData?.detail === 'string'
+          ? errData.detail
           : isAxiosErr && err.message
           ? err.message
           : 'Backend server not responding';

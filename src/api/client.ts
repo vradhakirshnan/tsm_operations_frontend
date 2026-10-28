@@ -52,26 +52,27 @@ apiClient.interceptors.response.use(
       window.location.href = '/login?reason=session_terminated';
     }
 
-    let friendlyMessage = 'An unexpected server error occurred.';
+    const serverMessage = error.response?.data?.message || error.response?.data?.detail;
+    let friendlyMessage = serverMessage || 'An unexpected server error occurred.';
 
     if (error.response) {
       const { status, data } = error.response;
       if (status === 401) {
-        friendlyMessage = 'Session expired or unauthenticated. Please re-authenticate.';
+        friendlyMessage = data?.message || 'Session expired or unauthenticated. Please re-authenticate.';
         localStorage.removeItem('tsm_auth_token');
         localStorage.removeItem('tsm_user');
       } else if (status === 403) {
-        friendlyMessage = 'You do not have permission to perform this operational action.';
+        friendlyMessage = data?.message || 'You do not have permission to perform this operational action.';
       } else if (status === 404) {
-        friendlyMessage = data?.detail || 'The requested resource was not found.';
+        friendlyMessage = data?.message || data?.detail || 'The requested resource was not found.';
       } else if (status === 409) {
-        friendlyMessage = data?.detail || 'Conflict: Record already exists.';
+        friendlyMessage = data?.message || data?.detail || 'Conflict: Record already exists.';
       } else if (status === 422) {
-        friendlyMessage = data?.detail || 'Validation error in request payload.';
+        friendlyMessage = data?.message || data?.detail || 'Validation error in request payload.';
       } else if (status >= 500) {
-        friendlyMessage = data?.detail || 'Internal server error. Our ops team has been notified.';
-      } else if (data?.detail) {
-        friendlyMessage = data.detail;
+        friendlyMessage = data?.message || data?.detail || 'Internal server error. Our ops team has been notified.';
+      } else if (serverMessage) {
+        friendlyMessage = serverMessage;
       }
     } else if (error.request) {
       friendlyMessage = 'Unable to connect to backend service. Check network or server status.';

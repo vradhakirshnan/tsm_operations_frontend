@@ -65,7 +65,7 @@ export interface UpdateUserDetailsRequest {
  */
 export interface ApiActionResponse {
   status: boolean;
-  message?: string;
+  message: string;
   logout?: boolean | string;
 }
 

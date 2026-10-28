@@ -94,11 +94,7 @@ export const UserManagementDashboard: React.FC = () => {
         isOpen: true,
         type: res.status ? 'success' : 'failure',
         title: res.status ? 'User Provisioned Successfully' : 'Failed to Create User',
-        message:
-          res.message ||
-          (res.status
-            ? `Credentials created for ${userData.user_name} (${userData.user_email}).`
-            : 'The backend rejected the user creation request.'),
+        message: res.message || 'Operation failed. Please try again.',
       });
       await fetchUsers();
     } catch (err: any) {
@@ -124,9 +120,7 @@ export const UserManagementDashboard: React.FC = () => {
         isOpen: true,
         type: res.status ? 'success' : 'failure',
         title: res.status ? 'User Details Updated' : 'Update Failed',
-        message:
-          res.message ||
-          `Station roles and authority for ${updated.userName} were updated successfully.`,
+        message: res.message || 'Failed to update user details.',
       });
       await fetchUsers();
     } catch (err: any) {
@@ -150,11 +144,7 @@ export const UserManagementDashboard: React.FC = () => {
         isOpen: true,
         type: res.status ? 'success' : 'failure',
         title: res.status ? 'User Status Updated' : 'Status Update Failed',
-        message:
-          res.message ||
-          `${targetUser.userName} terminal access is now ${
-            nextStatus ? 'Active & Enabled' : 'Disabled & Revoked'
-          }.`,
+        message: res.message || 'Failed to update user status.',
       });
       await fetchUsers();
     } catch (err: any) {
