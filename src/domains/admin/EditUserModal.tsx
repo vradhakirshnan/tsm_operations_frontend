@@ -23,6 +23,7 @@ import { getAdminRolesApi } from '../../api/usersApi';
 interface EditUserModalProps {
   isOpen: boolean;
   user: AdminUser | null;
+  isSelf?: boolean;
   onClose: () => void;
   onUpdateUser: (updated: AdminUser) => Promise<void> | void;
   onToggleStatus: (userId: string, enabled: boolean) => Promise<void> | void;
@@ -31,6 +32,7 @@ interface EditUserModalProps {
 export const EditUserModal: React.FC<EditUserModalProps> = ({
   isOpen,
   user,
+  isSelf = false,
   onClose,
   onUpdateUser,
   onToggleStatus,
@@ -41,7 +43,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
   );
   const [assignedRoleIds, setAssignedRoleIds] = useState<string[]>([]);
   const [enabled, setEnabled] = useState(true);
-  const [editMode, setEditMode] = useState(true);
+  const [editMode, setEditMode] = useState(!isSelf);
   const [showConfirmDisable, setShowConfirmDisable] = useState(false);
   const [roleSearch, setRoleSearch] = useState('');
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
@@ -56,7 +58,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
     if (isOpen && user) {
       setName(user.userName);
       setEnabled(user.enabled);
-      setEditMode(true);
+      setEditMode(!isSelf);
       setShowConfirmDisable(false);
       setSavedFeedback(false);
       setRoleSearch('');
@@ -156,18 +158,20 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
   };
 
   const handleConfirmDisable = async () => {
+    if (isSelf) return;
     setEnabled(false);
     setShowConfirmDisable(false);
     await onToggleStatus(user.userId, false);
   };
 
   const handleEnableUser = async () => {
+    if (isSelf) return;
     setEnabled(true);
     await onToggleStatus(user.userId, true);
   };
 
   const handleSave = async () => {
-    if (!name.trim()) return;
+    if (isSelf || !name.trim()) return;
     setIsSaving(true);
     try {
       // Send assigned role IDs to backend
@@ -269,8 +273,17 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
             {enabled ? (
               <button
                 type="button"
-                onClick={() => setShowConfirmDisable(true)}
-                className="px-3 py-1.5 rounded-lg bg-error-container hover:bg-error text-on-error-container hover:text-on-error text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95"
+                disabled={isSelf}
+                onClick={() => {
+                  if (isSelf) return;
+                  setShowConfirmDisable(true);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm ${
+                  isSelf
+                    ? 'bg-surface-container opacity-45 cursor-not-allowed text-outline'
+                    : 'bg-error-container hover:bg-error text-on-error-container hover:text-on-error active:scale-95'
+                }`}
+                title={isSelf ? 'Cannot disable your own account' : 'Disable user'}
               >
                 <Power className="h-3.5 w-3.5" />
                 <span>Disable</span>
@@ -278,8 +291,17 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
             ) : (
               <button
                 type="button"
-                onClick={handleEnableUser}
-                className="px-3 py-1.5 rounded-lg bg-tertiary-container hover:bg-tertiary text-on-tertiary-container hover:text-on-tertiary text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95"
+                disabled={isSelf}
+                onClick={() => {
+                  if (isSelf) return;
+                  handleEnableUser();
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm ${
+                  isSelf
+                    ? 'bg-surface-container opacity-45 cursor-not-allowed text-outline'
+                    : 'bg-tertiary-container hover:bg-tertiary text-on-tertiary-container hover:text-on-tertiary active:scale-95'
+                }`}
+                title={isSelf ? 'Cannot enable your own account' : 'Enable user'}
               >
                 <Power className="h-3.5 w-3.5" />
                 <span>Enable</span>
@@ -289,7 +311,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
         </div>
 
         {/* Active Confirmation Banner / Warning Dialog */}
-        {showConfirmDisable && (
+        {showConfirmDisable && !isSelf && (
           <div className="p-4 bg-error-container text-on-error-container flex flex-col gap-2.5 animate-in slide-in-from-top duration-200 border-b border-error/20">
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="h-5 w-5 text-error shrink-0 mt-0.5" />
@@ -328,7 +350,9 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
           <div className="flex items-center gap-1.5 text-on-surface">
             <Edit2 className="h-4 w-4 text-secondary shrink-0" />
             <span className="truncate">
-              To edit user details or modify roles, toggle Edit Mode below.
+              {isSelf
+                ? 'Self-editing is restricted. You cannot modify your own profile or roles.'
+                : 'To edit user details or modify roles, toggle Edit Mode below.'}
             </span>
           </div>
 
@@ -339,10 +363,18 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
             <button
               type="button"
               role="switch"
+              disabled={isSelf}
               aria-checked={editMode}
-              onClick={() => setEditMode(!editMode)}
+              onClick={() => {
+                if (isSelf) return;
+                setEditMode(!editMode);
+              }}
               className={`w-10 h-5 rounded-full relative p-0.5 transition-colors focus:outline-none ${
-                editMode ? 'bg-secondary-container' : 'bg-surface-variant'
+                isSelf
+                  ? 'bg-surface-variant opacity-40 cursor-not-allowed'
+                  : editMode
+                  ? 'bg-secondary-container'
+                  : 'bg-surface-variant'
               }`}
             >
               <span
@@ -356,6 +388,19 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
 
         {/* Scrollable Form Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Notice when viewing own profile */}
+          {isSelf && (
+            <div className="p-3.5 bg-secondary-fixed text-on-secondary-fixed-variant rounded-xl flex items-start gap-2.5 text-xs shadow-sm border border-secondary/30">
+              <AlertTriangle className="h-4 w-4 text-secondary shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Self-Editing Restricted</p>
+                <p className="text-[11px] mt-0.5 text-on-secondary-fixed-variant">
+                  You are viewing your own user profile. Modifying your own details, permissions, or active status (enable/disable) is prohibited for security compliance.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Email Address (Explicitly Read-Only / Locked) */}
           <div className="space-y-1">
             <div className="flex items-center justify-between text-xs">
@@ -569,7 +614,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
           </button>
 
           <div className="flex items-center gap-2">
-            {!editMode ? (
+            {!editMode && !isSelf ? (
               <button
                 type="button"
                 onClick={() => setEditMode(true)}
@@ -583,12 +628,13 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
             <button
               type="button"
               onClick={handleSave}
-              disabled={!hasChanges || isSaving}
+              disabled={!hasChanges || isSaving || isSelf}
               className={`h-10 px-5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md transition-all ${
-                hasChanges && !isSaving
+                hasChanges && !isSaving && !isSelf
                   ? 'bg-primary text-on-primary hover:bg-inverse-surface active:scale-95'
                   : 'bg-primary-container text-on-primary opacity-50 cursor-not-allowed'
               }`}
+              title={isSelf ? 'Cannot save changes to your own account' : undefined}
             >
               <CheckCircle2
                 className={`h-4 w-4 ${

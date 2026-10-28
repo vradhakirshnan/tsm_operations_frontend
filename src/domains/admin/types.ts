@@ -181,6 +181,42 @@ export function resolveRoleId(
 }
 
 /**
+ * Checks if a target AdminUser matches the currently logged in user session
+ */
+export function isCurrentUser(
+  targetUser: { userId?: string | number; userName?: string; userEmail?: string } | null | undefined,
+  currentUser: { userId?: string | number; username?: string; fullName?: string; email?: string } | null | undefined
+): boolean {
+  if (!targetUser || !currentUser) return false;
+
+  const currentEmail = (currentUser.email || currentUser.username || '').toLowerCase().trim();
+  const targetEmail = (targetUser.userEmail || '').toLowerCase().trim();
+
+  // 1. Check exact email match
+  if (currentEmail && targetEmail && currentEmail === targetEmail) {
+    return true;
+  }
+
+  // 2. Check user ID match
+  const currentId = String(currentUser.userId ?? '').toLowerCase().trim();
+  const targetId = String(targetUser.userId ?? '').toLowerCase().trim();
+  if (currentId && targetId) {
+    if (currentId === targetId) return true;
+    if (targetId === `usr_${currentId}` || currentId === `usr_${targetId}`) return true;
+  }
+
+  // 3. Check name match
+  const currentName = (currentUser.fullName || '').toLowerCase().trim();
+  const targetName = (targetUser.userName || '').toLowerCase().trim();
+  if (currentName && targetName) {
+    if (currentName === targetName) return true;
+    if (currentName.replace(/\s*\([^)]*\)/g, '').trim() === targetName) return true;
+  }
+
+  return false;
+}
+
+/**
  * Generates a nano ID style unique string for users (e.g., "usr_8492")
  */
 export function generateNanoId(prefix: string = 'usr'): string {

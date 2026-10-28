@@ -9,7 +9,7 @@ import {
   getAdminRolesApi,
   logoutApi,
 } from '../../api/usersApi';
-import { AdminUser, DEFAULT_ENABLED_ROLES_MOCK, resolveRoleId } from './types';
+import { AdminUser, DEFAULT_ENABLED_ROLES_MOCK, resolveRoleId, isCurrentUser } from './types';
 import { AddUserModal } from './AddUserModal';
 import { EditUserModal } from './EditUserModal';
 import { UserActionSheet } from './UserActionSheet';
@@ -131,6 +131,16 @@ export const UserManagementDashboard: React.FC = () => {
   };
 
   const handleUpdateUserDetails = async (updated: AdminUser) => {
+    if (isCurrentUser(updated, user)) {
+      setStatusPopup({
+        isOpen: true,
+        type: 'failure',
+        title: 'Action Restricted',
+        message: 'You cannot edit your own user account details.',
+      });
+      return;
+    }
+
     setIsActionLoading(true);
     try {
       // Ensure role IDs are sent to the backend
@@ -159,6 +169,16 @@ export const UserManagementDashboard: React.FC = () => {
   };
 
   const handleToggleStatus = async (targetUser: AdminUser) => {
+    if (isCurrentUser(targetUser, user)) {
+      setStatusPopup({
+        isOpen: true,
+        type: 'failure',
+        title: 'Action Restricted',
+        message: 'You cannot enable or disable your own account.',
+      });
+      return;
+    }
+
     setIsActionLoading(true);
     const nextStatus = !targetUser.enabled;
     try {
@@ -180,6 +200,19 @@ export const UserManagementDashboard: React.FC = () => {
     } finally {
       setIsActionLoading(false);
     }
+  };
+
+  const handleOpenEdit = (targetUser: AdminUser) => {
+    if (isCurrentUser(targetUser, user)) {
+      setStatusPopup({
+        isOpen: true,
+        type: 'failure',
+        title: 'Action Restricted',
+        message: 'You cannot edit your own user account details or permissions.',
+      });
+      return;
+    }
+    setEditUser(targetUser);
   };
 
   const handleResetPin = (targetUser: AdminUser) => {
@@ -227,8 +260,8 @@ export const UserManagementDashboard: React.FC = () => {
   }, [users, searchTerm, sortBy]);
 
   const activeCrew = useMemo(
-    () => filteredUsers.filter((u) => u.enabled),
-    [filteredUsers]
+    () => filteredUsers.filter((u) => u.enabled && !isCurrentUser(u, user)),
+    [filteredUsers, user]
   );
   const disabledCrew = useMemo(
     () => filteredUsers.filter((u) => !u.enabled),
@@ -737,7 +770,12 @@ export const UserManagementDashboard: React.FC = () => {
                                 <h3 className="font-headline text-sm font-bold text-on-surface-variant truncate">
                                   {staff.userName}
                                 </h3>
-                                <span className="px-1.5 py-0.2 rounded bg-surface-container-high text-outline text-[9px] uppercase font-bold tracking-tight">
+                                {isCurrentUser(staff, user) && (
+                                  <span className="px-1.5 py-0.5 rounded bg-secondary-fixed text-on-secondary-fixed-variant text-[9px] uppercase font-bold tracking-tight">
+                                    You (Self)
+                                  </span>
+                                )}
+                                <span className="px-1.5 py-0.5 rounded bg-surface-container-high text-outline text-[9px] uppercase font-bold tracking-tight">
                                   Revoked
                                 </span>
                               </div>
@@ -865,11 +903,21 @@ export const UserManagementDashboard: React.FC = () => {
       <EditUserModal
         isOpen={!!editUser}
         user={editUser}
+        isSelf={editUser ? isCurrentUser(editUser, user) : false}
         onClose={() => setEditUser(null)}
         onUpdateUser={handleUpdateUserDetails}
         onToggleStatus={async (userId, enabled) => {
           const target = users.find((u) => u.userId === userId);
           if (target) {
+            if (isCurrentUser(target, user)) {
+              setStatusPopup({
+                isOpen: true,
+                type: 'failure',
+                title: 'Action Restricted',
+                message: 'You cannot enable or disable your own account.',
+              });
+              return;
+            }
             target.enabled = !enabled; // set to opposite so toggle inverts it
             await handleToggleStatus(target);
           }
@@ -879,8 +927,9 @@ export const UserManagementDashboard: React.FC = () => {
       <UserActionSheet
         isOpen={!!actionSheetUser}
         user={actionSheetUser}
+        isSelf={actionSheetUser ? isCurrentUser(actionSheetUser, user) : false}
         onClose={() => setActionSheetUser(null)}
-        onEdit={(u) => setEditUser(u)}
+        onEdit={handleOpenEdit}
         onToggleStatus={handleToggleStatus}
         onResetPin={handleResetPin}
       />

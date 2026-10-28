@@ -6,12 +6,14 @@ import {
   History,
   Power,
   ShieldAlert,
+  ShieldCheck,
 } from 'lucide-react';
 import { AdminUser } from './types';
 
 interface UserActionSheetProps {
   isOpen: boolean;
   user: AdminUser | null;
+  isSelf?: boolean;
   onClose: () => void;
   onEdit: (user: AdminUser) => void;
   onToggleStatus: (user: AdminUser) => void;
@@ -21,6 +23,7 @@ interface UserActionSheetProps {
 export const UserActionSheet: React.FC<UserActionSheetProps> = ({
   isOpen,
   user,
+  isSelf = false,
   onClose,
   onEdit,
   onToggleStatus,
@@ -43,9 +46,16 @@ export const UserActionSheet: React.FC<UserActionSheetProps> = ({
         {/* User Header in Modal */}
         <div className="flex items-center justify-between pb-2 border-b border-surface-container">
           <div className="flex flex-col min-w-0 pr-2">
-            <h3 className="font-headline text-base sm:text-lg font-bold text-on-surface truncate">
-              {user.userName}
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-headline text-base sm:text-lg font-bold text-on-surface truncate">
+                {user.userName}
+              </h3>
+              {isSelf && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-secondary-fixed text-on-secondary-fixed-variant uppercase">
+                  You (Current User)
+                </span>
+              )}
+            </div>
             <span className="font-body text-xs text-on-surface-variant truncate">
               {user.userEmail}
             </span>
@@ -71,26 +81,50 @@ export const UserActionSheet: React.FC<UserActionSheetProps> = ({
           </div>
         </div>
 
+        {/* Notice if viewing self */}
+        {isSelf && (
+          <div className="p-3 rounded-xl bg-surface-container-low border border-surface-container text-xs text-on-surface-variant flex items-center gap-2.5">
+            <ShieldCheck className="h-4 w-4 text-secondary shrink-0" />
+            <span>
+              You are viewing your own operational account. Modifying permissions or enabling/disabling your own profile is restricted.
+            </span>
+          </div>
+        )}
+
         {/* Quick Action List */}
         <div className="flex flex-col gap-2">
           {/* Action 1: Edit Permissions & Roles */}
           <button
             type="button"
+            disabled={isSelf}
             onClick={() => {
+              if (isSelf) return;
               onClose();
               onEdit(user);
             }}
-            className="flex items-center gap-3 w-full p-3 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface text-left transition-colors group cursor-pointer"
+            className={`flex items-center gap-3 w-full p-3 rounded-xl text-left transition-colors group ${
+              isSelf
+                ? 'bg-surface-container-low opacity-45 cursor-not-allowed text-outline'
+                : 'bg-surface-container-low hover:bg-surface-container text-on-surface cursor-pointer'
+            }`}
           >
-            <div className="p-2 rounded-lg bg-secondary-container/20 text-secondary group-hover:scale-105 transition-transform">
+            <div
+              className={`p-2 rounded-lg ${
+                isSelf
+                  ? 'bg-surface-container text-outline'
+                  : 'bg-secondary-container/20 text-secondary group-hover:scale-105 transition-transform'
+              }`}
+            >
               <Edit className="h-4 w-4" />
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-bold text-primary">
+              <span className="text-xs font-bold">
                 Edit Permissions &amp; Roles
               </span>
               <span className="text-[11px] text-on-surface-variant">
-                Modify station matrix access and display title
+                {isSelf
+                  ? 'Self-editing restricted (cannot modify own account)'
+                  : 'Modify station matrix access and display title'}
               </span>
             </div>
           </button>
@@ -142,22 +176,28 @@ export const UserActionSheet: React.FC<UserActionSheetProps> = ({
           {/* Action 4: Deactivate / Activate Account */}
           <button
             type="button"
+            disabled={isSelf}
             onClick={() => {
+              if (isSelf) return;
               onClose();
               onToggleStatus(user);
             }}
-            className={`flex items-center gap-3 w-full p-3 rounded-xl text-left transition-colors group cursor-pointer ${
-              user.enabled
-                ? 'bg-error-container/40 hover:bg-error-container text-error'
-                : 'bg-tertiary-container/30 hover:bg-tertiary-container/50 text-tertiary'
+            className={`flex items-center gap-3 w-full p-3 rounded-xl text-left transition-colors group ${
+              isSelf
+                ? 'bg-surface-container-low opacity-45 cursor-not-allowed text-outline'
+                : user.enabled
+                ? 'bg-error-container/40 hover:bg-error-container text-error cursor-pointer'
+                : 'bg-tertiary-container/30 hover:bg-tertiary-container/50 text-tertiary cursor-pointer'
             }`}
           >
             <div
               className={`p-2 rounded-lg ${
-                user.enabled
-                  ? 'bg-error-container text-error'
-                  : 'bg-tertiary-container text-on-tertiary-container'
-              } group-hover:scale-105 transition-transform`}
+                isSelf
+                  ? 'bg-surface-container text-outline'
+                  : user.enabled
+                  ? 'bg-error-container text-error group-hover:scale-105 transition-transform'
+                  : 'bg-tertiary-container text-on-tertiary-container group-hover:scale-105 transition-transform'
+              }`}
             >
               {user.enabled ? (
                 <ShieldAlert className="h-4 w-4" />
@@ -170,7 +210,9 @@ export const UserActionSheet: React.FC<UserActionSheetProps> = ({
                 {user.enabled ? 'Deactivate Account' : 'Reactivate Account'}
               </span>
               <span className="text-[11px] opacity-80">
-                {user.enabled
+                {isSelf
+                  ? 'Self-status changes restricted (cannot enable/disable self)'
+                  : user.enabled
                   ? 'Revoke terminal access across all kitchen pods immediately'
                   : 'Restore kitchen terminal access and station credentials'}
               </span>
