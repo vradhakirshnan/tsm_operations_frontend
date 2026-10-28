@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useKitchenStore } from '../../store/kitchenStore';
+import { logoutApi } from '../../api/usersApi';
 import { SSEStatusIndicator } from './SSEStatusIndicator';
 import { SSEConnectionState } from '../../types';
 import {
@@ -41,9 +42,13 @@ export const Header: React.FC<HeaderProps> = ({
   const { liveAlerts, unreadAlertCount, markAllAlertsAsRead } = useKitchenStore();
   const [showAlertsDropdown, setShowAlertsDropdown] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login', { replace: true });
+  const handleLogout = async () => {
+    try {
+      await logoutApi();
+    } finally {
+      logout();
+      navigate('/login', { replace: true });
+    }
   };
 
   return (

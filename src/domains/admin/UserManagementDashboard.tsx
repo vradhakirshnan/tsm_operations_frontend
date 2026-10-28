@@ -2,14 +2,18 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import {
-  getUsersApi,
-  saveUserApi,
-  toggleUserStatusApi,
+  getUserDashboardApi,
+  createUserApi,
+  updateUserStatusApi,
+  updateUserDetailsApi,
+  logoutApi,
 } from '../../api/usersApi';
 import { AdminUser } from './types';
 import { AddUserModal } from './AddUserModal';
 import { EditUserModal } from './EditUserModal';
 import { UserActionSheet } from './UserActionSheet';
+import { StatusPopup } from '../../components/common/StatusPopup';
+import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import {
   Building2,
   Search,
@@ -17,7 +21,6 @@ import {
   MoreVertical,
   Plus,
   Clock,
-  UserCheck,
   UserX,
   ChevronDown,
   ChevronUp,
@@ -37,23 +40,39 @@ export const UserManagementDashboard: React.FC = () => {
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isActionLoading, setIsActionLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'lastUsed' | 'id'>('name');
   const [activeTab, setActiveTab] = useState<'users' | 'roles'>('users');
   const [disabledAccordionOpen, setDisabledAccordionOpen] = useState(true);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   // Modal and Action Sheet States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
   const [actionSheetUser, setActionSheetUser] = useState<AdminUser | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Load initial users via getUsersApi
+  // Success / Failure Action Result Popup
+  const [statusPopup, setStatusPopup] = useState<{
+    isOpen: boolean;
+    type: 'success' | 'failure';
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    type: 'success',
+    title: '',
+    message: '',
+  });
+
+  // Load users via api/v1/get_user_dashboard
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
-      const data = await getUsersApi();
-      setUsers(data);
+      const data = await getUserDashboardApi();
+      if (!data.logout) {
+        setUsers(data.users);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -63,40 +82,110 @@ export const UserManagementDashboard: React.FC = () => {
     fetchUsers();
   }, []);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+  const handleCreateUser = async (userData: {
+    user_email: string;
+    user_name: string;
+    roles: string[];
+  }) => {
+    setIsActionLoading(true);
+    try {
+      const res = await createUserApi(userData);
+      setStatusPopup({
+        isOpen: true,
+        type: res.status ? 'success' : 'failure',
+        title: res.status ? 'User Provisioned Successfully' : 'Failed to Create User',
+        message:
+          res.message ||
+          (res.status
+            ? `Credentials created for ${userData.user_name} (${userData.user_email}).`
+            : 'The backend rejected the user creation request.'),
+      });
+      await fetchUsers();
+    } catch (err: any) {
+      setStatusPopup({
+        isOpen: true,
+        type: 'failure',
+        title: 'Error Creating User',
+        message: err.message || 'An unexpected error occurred calling create_user API.',
+      });
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
-  const handleCreateUser = async (userData: Omit<AdminUser, 'userId'>) => {
-    const created = await saveUserApi(userData);
-    setUsers((prev) => [created, ...prev]);
-    showToast(`User ${created.userName} successfully provisioned.`);
-  };
-
-  const handleUpdateUser = async (updated: AdminUser) => {
-    await saveUserApi(updated);
-    setUsers((prev) =>
-      prev.map((u) => (u.userId === updated.userId ? updated : u))
-    );
-    showToast(`User ${updated.userName} successfully updated.`);
+  const handleUpdateUserDetails = async (updated: AdminUser) => {
+    setIsActionLoading(true);
+    try {
+      const res = await updateUserDetailsApi(updated.userId, {
+        user_name: updated.userName,
+        roles: updated.roles,
+      });
+      setStatusPopup({
+        isOpen: true,
+        type: res.status ? 'success' : 'failure',
+        title: res.status ? 'User Details Updated' : 'Update Failed',
+        message:
+          res.message ||
+          `Station roles and authority for ${updated.userName} were updated successfully.`,
+      });
+      await fetchUsers();
+    } catch (err: any) {
+      setStatusPopup({
+        isOpen: true,
+        type: 'failure',
+        title: 'Error Updating User Details',
+        message: err.message || 'An unexpected error occurred calling update_user API.',
+      });
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   const handleToggleStatus = async (targetUser: AdminUser) => {
+    setIsActionLoading(true);
     const nextStatus = !targetUser.enabled;
-    await toggleUserStatusApi(targetUser.userId, nextStatus);
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.userId === targetUser.userId ? { ...u, enabled: nextStatus } : u
-      )
-    );
-    showToast(
-      `User ${targetUser.userName} is now ${nextStatus ? 'Active' : 'Disabled'}.`
-    );
+    try {
+      const res = await updateUserStatusApi(targetUser.userId, nextStatus);
+      setStatusPopup({
+        isOpen: true,
+        type: res.status ? 'success' : 'failure',
+        title: res.status ? 'User Status Updated' : 'Status Update Failed',
+        message:
+          res.message ||
+          `${targetUser.userName} terminal access is now ${
+            nextStatus ? 'Active & Enabled' : 'Disabled & Revoked'
+          }.`,
+      });
+      await fetchUsers();
+    } catch (err: any) {
+      setStatusPopup({
+        isOpen: true,
+        type: 'failure',
+        title: 'Error Updating User Status',
+        message: err.message || 'An unexpected error occurred calling update_user API.',
+      });
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   const handleResetPin = (targetUser: AdminUser) => {
-    showToast(`New station PIN bypass generated for ${targetUser.userName}.`);
+    setStatusPopup({
+      isOpen: true,
+      type: 'success',
+      title: 'Station PIN Bypass Issued',
+      message: `A temporary terminal PIN bypass was dispatched to ${targetUser.userEmail}.`,
+    });
+  };
+
+  const handleLogout = async () => {
+    setIsLoading(true);
+    try {
+      await logoutApi();
+    } finally {
+      logout();
+      navigate('/login', { replace: true });
+    }
   };
 
   // Filter and sort active and disabled users
@@ -149,14 +238,6 @@ export const UserManagementDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-surface font-body text-on-surface flex flex-col antialiased">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed top-20 right-4 z-50 bg-primary text-on-primary px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-semibold animate-in slide-in-from-top border border-secondary-container/30">
-          <UserCheck className="h-4 w-4 text-tertiary-fixed" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
       {/* Top Header - Sticky / Desktop & Mobile Friendly */}
       <header className="sticky top-0 z-40 bg-surface/95 backdrop-blur-xl border-b border-surface-container shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -193,7 +274,7 @@ export const UserManagementDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Right: Actions, OpsHub Switcher & Profile */}
+            {/* Right: Actions, OpsHub Switcher & Profile Dropdown */}
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
               {/* Primary Add User Button (Visible on desktop/tablet) */}
               <button
@@ -216,9 +297,14 @@ export const UserManagementDashboard: React.FC = () => {
                 <span>Operations Hub</span>
               </button>
 
-              {/* Admin Avatar & Role */}
-              <div className="flex items-center gap-2.5 pl-2 border-l border-surface-container">
-                <div className="relative">
+              {/* Profile Dropdown matching Stitch Screen */}
+              <div className="relative pl-2 border-l border-surface-container">
+                <button
+                  type="button"
+                  id="headerProfileBtn"
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
+                  className="flex items-center gap-2 p-1 rounded-xl hover:bg-surface-container transition-colors focus:outline-none"
+                >
                   <img
                     src={
                       user?.avatarUrl ||
@@ -227,34 +313,63 @@ export const UserManagementDashboard: React.FC = () => {
                     alt={user?.fullName || 'Admin'}
                     className="w-9 h-9 rounded-xl object-cover border border-outline-variant/40 shadow-sm"
                   />
-                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-tertiary-fixed-dim rounded-full ring-2 ring-surface" />
-                </div>
-
-                <div className="hidden lg:flex flex-col text-left">
-                  <span className="text-xs font-bold text-on-surface truncate max-w-[120px]">
-                    {user?.fullName || 'Kitchen Admin'}
-                  </span>
-                  <span className="text-[10px] text-secondary font-bold uppercase tracking-wider">
-                    {user?.role || 'Admin'}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    logout();
-                    navigate('/login', { replace: true });
-                  }}
-                  className="p-2 rounded-lg text-on-surface-variant hover:text-error hover:bg-error-container/20 transition-colors"
-                  title="Sign Out"
-                >
-                  <LogOut className="h-4 w-4" />
+                  <div className="hidden lg:flex flex-col text-left">
+                    <span className="text-xs font-bold text-on-surface truncate max-w-[120px]">
+                      {user?.fullName || 'Admin Executive'}
+                    </span>
+                    <span className="text-[10px] text-secondary font-bold uppercase tracking-wider">
+                      {user?.role || 'Admin'}
+                    </span>
+                  </div>
                 </button>
+
+                {/* Profile Dropdown Menu with Logout */}
+                {showProfileMenu && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-surface-container-lowest border border-surface-container shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-3 py-2 border-b border-surface-container">
+                      <p className="text-xs font-bold text-on-surface truncate">
+                        {user?.fullName || 'Kitchen Admin'}
+                      </p>
+                      <p className="text-[11px] text-on-surface-variant truncate">
+                        {user?.email || 'admin@kitchenops.io'}
+                      </p>
+                      <span className="mt-1 inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-secondary-fixed text-on-secondary-fixed-variant uppercase">
+                        {user?.role || 'Admin'}
+                      </span>
+                    </div>
+
+                    <div className="pt-1 space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowProfileMenu(false);
+                          navigate('/');
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-on-surface hover:bg-surface-container rounded-lg transition-colors text-left"
+                      >
+                        <LayoutDashboard className="h-4 w-4 text-secondary" />
+                        <span>Operations Hub</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowProfileMenu(false);
+                          handleLogout();
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-error hover:bg-error-container/40 rounded-lg transition-colors text-left"
+                      >
+                        <LogOut className="h-4 w-4 text-error" />
+                        <span>Log Out</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Subheader Navigation Pills */}
+          {/* Subheader Navigation Tabs */}
           <div className="pb-3 pt-1 flex items-center justify-between gap-3">
             <div className="grid grid-cols-2 p-1 bg-surface-container rounded-xl gap-1 w-full sm:w-80">
               <button
@@ -296,8 +411,14 @@ export const UserManagementDashboard: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 pb-28 md:pb-12">
-        {activeTab === 'roles' ? (
-          /* Role Management View Stub */
+        {isLoading && users.length === 0 ? (
+          <LoadingSpinner
+            message="Calling get_user_dashboard..."
+            subMessage="Synchronizing staff roster with KitchenOps backend..."
+            fullScreen={false}
+          />
+        ) : activeTab === 'roles' ? (
+          /* Role Management View */
           <div className="bg-surface-container-lowest rounded-2xl p-6 sm:p-8 border border-surface-container shadow-sm space-y-4">
             <div className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-secondary" />
@@ -365,8 +486,8 @@ export const UserManagementDashboard: React.FC = () => {
                   type="button"
                   onClick={fetchUsers}
                   disabled={isLoading}
-                  className="p-1 hover:text-on-surface transition-colors"
-                  title="Refresh users"
+                  className="p-1 hover:text-on-surface transition-colors cursor-pointer"
+                  title="Refresh users from backend"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                 </button>
@@ -463,7 +584,7 @@ export const UserManagementDashboard: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setActionSheetUser(staff)}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors shrink-0"
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors shrink-0 cursor-pointer"
                           title="Options"
                         >
                           <MoreVertical className="h-4 w-4" />
@@ -488,7 +609,7 @@ export const UserManagementDashboard: React.FC = () => {
                         <div className="flex items-center gap-1.5 text-[11px]">
                           <Clock className="h-3 w-3 text-tertiary-fixed-dim" />
                           <span>
-                            Last used: <strong className="text-on-surface font-semibold">Today, 10:42 AM</strong>
+                            Last used: <strong className="text-on-surface font-semibold">{staff.lastUsed || 'Today'}</strong>
                           </span>
                         </div>
 
@@ -508,7 +629,7 @@ export const UserManagementDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setDisabledAccordionOpen(!disabledAccordionOpen)}
-                className="w-full flex items-center justify-between p-3.5 bg-surface-container-low hover:bg-surface-container rounded-2xl transition-colors border border-surface-container"
+                className="w-full flex items-center justify-between p-3.5 bg-surface-container-low hover:bg-surface-container rounded-2xl transition-colors border border-surface-container cursor-pointer"
               >
                 <div className="flex items-center gap-2.5">
                   <UserX className="h-4 w-4 text-outline" />
@@ -573,7 +694,7 @@ export const UserManagementDashboard: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setActionSheetUser(staff)}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-outline hover:bg-surface-container transition-colors"
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-outline hover:bg-surface-container transition-colors cursor-pointer"
                           >
                             <MoreVertical className="h-4 w-4" />
                           </button>
@@ -611,7 +732,7 @@ export const UserManagementDashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => setIsAddModalOpen(true)}
-          className="w-14 h-14 rounded-full bg-secondary-container text-on-secondary-container shadow-xl flex items-center justify-center transition-transform active:scale-95 border-2 border-surface"
+          className="w-14 h-14 rounded-full bg-secondary-container text-on-secondary-container shadow-xl flex items-center justify-center transition-transform active:scale-95 border-2 border-surface cursor-pointer"
           title="Add User"
         >
           <Plus className="h-6 w-6 font-bold" />
@@ -652,10 +773,7 @@ export const UserManagementDashboard: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => {
-              logout();
-              navigate('/login', { replace: true });
-            }}
+            onClick={handleLogout}
             className="flex flex-col items-center justify-center gap-0.5 w-16 h-12 text-on-surface-variant hover:text-error transition-colors"
           >
             <LogOut className="h-5 w-5" />
@@ -663,6 +781,23 @@ export const UserManagementDashboard: React.FC = () => {
           </button>
         </div>
       </nav>
+
+      {/* Action Loading Overlay */}
+      {isActionLoading && (
+        <LoadingSpinner
+          message="Calling KitchenOps Backend API..."
+          subMessage="Executing user provisioning/update request and syncing state..."
+        />
+      )}
+
+      {/* Result Status Popup (Success / Failure) */}
+      <StatusPopup
+        isOpen={statusPopup.isOpen}
+        type={statusPopup.type}
+        title={statusPopup.title}
+        message={statusPopup.message}
+        onClose={() => setStatusPopup((prev) => ({ ...prev, isOpen: false }))}
+      />
 
       {/* Modals & Action Sheet */}
       <AddUserModal
@@ -675,10 +810,13 @@ export const UserManagementDashboard: React.FC = () => {
         isOpen={!!editUser}
         user={editUser}
         onClose={() => setEditUser(null)}
-        onUpdateUser={handleUpdateUser}
-        onToggleStatus={async (userId) => {
+        onUpdateUser={handleUpdateUserDetails}
+        onToggleStatus={async (userId, enabled) => {
           const target = users.find((u) => u.userId === userId);
-          if (target) await handleToggleStatus(target);
+          if (target) {
+            target.enabled = !enabled; // set to opposite so toggle inverts it
+            await handleToggleStatus(target);
+          }
         }}
       />
 

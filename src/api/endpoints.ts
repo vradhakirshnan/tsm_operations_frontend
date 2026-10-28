@@ -4,9 +4,15 @@ export const API_ENDPOINTS = {
     ROLES: '/auth/roles',
     GOOGLE_LOGIN: '/auth/google/login',
     GOOGLE_CALLBACK: '/auth/google/callback',
+    LOGOUT: '/logout',
     ME: '/auth/me',
   },
+  DASHBOARD: {
+    GET_USER_DASHBOARD: '/get_user_dashboard',
+  },
   ADMIN: {
+    CREATE_USER: '/admin/create_user',
+    UPDATE_USER: '/admin/update_user',
     GET_USERS: '/admin/get_users',
     USERS: '/auth/users',
   },

@@ -1,5 +1,5 @@
 /**
- * Raw user data payload as received from the backend get_users endpoint:
+ * Raw user data payload as received from the backend:
  * {
  *   "user_id": {
  *     "user_name": string,
@@ -34,6 +34,57 @@ export interface AdminUser {
 }
 
 /**
+ * Request payload for api/v1/admin/create_user
+ */
+export interface CreateUserRequest {
+  user_email: string;
+  user_name: string;
+  roles: string[];
+}
+
+/**
+ * Request payload for api/v1/admin/update_user (enabling/disabling user)
+ */
+export interface UpdateUserStatusRequest {
+  user_id: string;
+  enabled: boolean;
+}
+
+/**
+ * Request payload for api/v1/admin/update_user (editing roles & name)
+ */
+export interface UpdateUserDetailsRequest {
+  user_id: string;
+  roles: string[];
+  user_name: string;
+}
+
+/**
+ * Common response from create_user and update_user APIs:
+ * { "status": true/false }
+ */
+export interface ApiActionResponse {
+  status: boolean;
+  message?: string;
+  logout?: boolean | string;
+}
+
+/**
+ * Response payload from api/v1/get_user_dashboard
+ */
+export interface UserDashboardResponse {
+  role?: string;
+  roles?: string[];
+  user_name?: string;
+  user_email?: string;
+  users?: RawUsersDictionary;
+  dashboard_data?: Record<string, any>;
+  logout?: boolean | string;
+  status?: boolean;
+  [key: string]: any;
+}
+
+/**
  * Available station and kitchen role authorities in the Culinary Registry
  */
 export const AVAILABLE_ROLES = [
@@ -50,9 +101,22 @@ export const AVAILABLE_ROLES = [
   'Sous Chef',
   'Safety & HACCP Officer',
   'Management',
+  'Delivery Team',
 ] as const;
 
 export type AvailableRole = (typeof AVAILABLE_ROLES)[number];
+
+/**
+ * Generates a nano ID style unique string for users (e.g., "usr_8492")
+ */
+export function generateNanoId(prefix: string = 'usr'): string {
+  const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${prefix}_${result}`;
+}
 
 /**
  * Normalizes backend dictionary into a sorted, structured array of AdminUser
@@ -73,12 +137,11 @@ export function normalizeUsersDictionary(dict: RawUsersDictionary): AdminUser[] 
       userEmail: data.user_email || '',
       enabled: isEnabled,
       roles: Array.isArray(data.roles) ? data.roles : [],
-      // Standard avatar generator for consistency
       avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
         data.user_name || 'Staff'
       )}&backgroundColor=1e293b,091426&textColor=ffffff`,
-      station: data.roles?.[0] || 'Central Kitchen',
-      lastUsed: isEnabled ? 'Today, Active Shift' : 'Inactive',
+      station: data.roles?.[0] || 'Central Kitchen #04',
+      lastUsed: isEnabled ? 'Today, 10:42 AM' : 'Inactive',
     };
   });
 }

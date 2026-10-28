@@ -14,12 +14,16 @@ import {
   Flame,
   Layers,
 } from 'lucide-react';
-import { AdminUser, AVAILABLE_ROLES } from './types';
+import { AVAILABLE_ROLES } from './types';
 
 interface AddUserModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSaveUser: (userData: Omit<AdminUser, 'userId'>) => Promise<void> | void;
+  onSaveUser: (userData: {
+    user_email: string;
+    user_name: string;
+    roles: string[];
+  }) => Promise<void> | void;
 }
 
 export const AddUserModal: React.FC<AddUserModalProps> = ({
@@ -84,11 +88,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     setIsSubmitting(true);
     try {
       await onSaveUser({
-        userName: trimmedName,
-        userEmail: trimmedEmail,
-        enabled,
+        user_name: trimmedName,
+        user_email: trimmedEmail,
         roles,
-        station: roles[0] || 'Central Kitchen',
       });
       onClose();
     } catch {

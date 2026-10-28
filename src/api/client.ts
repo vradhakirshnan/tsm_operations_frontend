@@ -26,16 +26,40 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response Interceptor: Unified error transformation
+// Response Interceptor: Unified error transformation and automatic logout handling
 apiClient.interceptors.response.use(
-  (response) => response,
-  (error: AxiosError<{ detail?: string; message?: string }>) => {
+  (response) => {
+    // Check if backend instructed logout flag in any response
+    const data = response.data;
+    if (
+      data &&
+      typeof data === 'object' &&
+      (data.logout === true ||
+        data.logout === 'True' ||
+        data.logout === 'true')
+    ) {
+      localStorage.removeItem('tsm_auth_token');
+      localStorage.removeItem('tsm_user');
+      window.location.href = '/login?reason=session_terminated';
+    }
+    return response;
+  },
+  (error: AxiosError<{ detail?: string; message?: string; logout?: boolean | string }>) => {
+    // If backend returns 401 or logout in error payload
+    if (error.response?.data?.logout === true || error.response?.data?.logout === 'True') {
+      localStorage.removeItem('tsm_auth_token');
+      localStorage.removeItem('tsm_user');
+      window.location.href = '/login?reason=session_terminated';
+    }
+
     let friendlyMessage = 'An unexpected server error occurred.';
 
     if (error.response) {
       const { status, data } = error.response;
       if (status === 401) {
         friendlyMessage = 'Session expired or unauthenticated. Please re-authenticate.';
+        localStorage.removeItem('tsm_auth_token');
+        localStorage.removeItem('tsm_user');
       } else if (status === 403) {
         friendlyMessage = 'You do not have permission to perform this operational action.';
       } else if (status === 404) {

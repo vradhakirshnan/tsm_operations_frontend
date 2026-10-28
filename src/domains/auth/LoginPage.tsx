@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGoogleLogin, GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { useAuthStore } from '../../store/authStore';
-import { setStoredUsersDictionary } from '../../api/usersApi';
+import { setStoredUsersDictionary, getUserDashboardApi } from '../../api/usersApi';
+import { getDashboardRouteForRoles } from '../../utils/roleRouting';
+import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import {
   ChefHat,
   AlertCircle,
@@ -56,6 +58,7 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, login, loginWithDemo, isAuthenticated } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [verifiedGoogleUser, setVerifiedGoogleUser] = useState<VerifiedGoogleUser | null>(null);
@@ -63,7 +66,7 @@ export const LoginPage: React.FC = () => {
   // If already authenticated, redirect to appropriate role portal
   React.useEffect(() => {
     if (isAuthenticated) {
-      const destination = user?.role === 'Admin' ? '/admin/users' : '/';
+      const destination = getDashboardRouteForRoles(user?.role);
       navigate(destination, { replace: true });
     }
   }, [isAuthenticated, user, navigate]);
@@ -71,6 +74,32 @@ export const LoginPage: React.FC = () => {
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
   const backendLoginEndpoint = `${apiBaseUrl}/auth/google/login`;
+
+  /**
+   * Completes post-login flow:
+   * 1. Calls get_user_dashboard with token
+   * 2. Checks logout flag
+   * 3. Redirects to designated dashboard by user role
+   */
+  const proceedToRoleDashboard = async (fallbackRole: string) => {
+    setIsDashboardLoading(true);
+    try {
+      const dash = await getUserDashboardApi();
+      if (dash.logout) {
+        setIsDashboardLoading(false);
+        setErrorMessage('Session terminated by server (logout flag set).');
+        return;
+      }
+      const targetRole = dash.role || fallbackRole;
+      const destination = getDashboardRouteForRoles(targetRole);
+      navigate(destination, { replace: true });
+    } catch {
+      const destination = getDashboardRouteForRoles(fallbackRole);
+      navigate(destination, { replace: true });
+    } finally {
+      setIsDashboardLoading(false);
+    }
+  };
 
   /**
    * Sends Google credentials (ID Token or Access Token + profile) to the backend.
@@ -115,8 +144,8 @@ export const LoginPage: React.FC = () => {
         token: sessionToken,
       });
 
-      const destination = assignedRole === 'Admin' ? '/admin/users' : '/';
-      navigate(destination, { replace: true });
+      setIsLoading(false);
+      await proceedToRoleDashboard(assignedRole);
     } catch (err: unknown) {
       setIsLoading(false);
       setStatusMessage(null);
@@ -223,7 +252,7 @@ export const LoginPage: React.FC = () => {
     });
   };
 
-  const handleProceedWithVerifiedGoogle = () => {
+  const handleProceedWithVerifiedGoogle = async () => {
     if (!verifiedGoogleUser) return;
     login({
       userId: 1,
@@ -235,7 +264,7 @@ export const LoginPage: React.FC = () => {
       station: 'Central Kitchen #04',
       token: verifiedGoogleUser.idToken || verifiedGoogleUser.accessToken || 'google_admin_session_token',
     });
-    navigate('/admin/users', { replace: true });
+    await proceedToRoleDashboard('Admin');
   };
 
   return (
@@ -418,19 +447,59 @@ export const LoginPage: React.FC = () => {
           </div>
 
           {/* Demo Bypass button for instant local verification */}
-          <button
-            type="button"
-            onClick={() => {
-              loginWithDemo();
-              navigate('/admin/users', { replace: true });
-            }}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 active:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 text-xs font-semibold transition-all group cursor-pointer"
-          >
-            <ChefHat className="h-4 w-4 text-brand-400" />
-            <span>Continue as Kitchen Ops Admin</span>
-            <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-          </button>
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={async () => {
+                loginWithDemo();
+                await proceedToRoleDashboard('Admin');
+              }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 active:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 text-xs font-semibold transition-all group cursor-pointer"
+            >
+              <ChefHat className="h-4 w-4 text-brand-400" />
+              <span>Continue as Kitchen Ops Admin</span>
+              <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+
+            {/* Quick role switcher dropdown for testing other roles */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              {[
+                { label: 'Ops Manager', role: 'Operations Manager' },
+                { label: 'Ops Executive', role: 'Operations Executive' },
+                { label: 'Management', role: 'Management' },
+                { label: 'Delivery Team', role: 'Delivery Team' },
+              ].map((r) => (
+                <button
+                  key={r.role}
+                  type="button"
+                  onClick={async () => {
+                    useAuthStore.getState().login({
+                      userId: 2,
+                      username: `${r.label.toLowerCase().replace(' ', '_')}@kitchenops.io`,
+                      fullName: `${r.label} User`,
+                      email: `${r.label.toLowerCase().replace(' ', '_')}@kitchenops.io`,
+                      role: r.role,
+                      station: 'Central Kitchen #04',
+                      token: `demo_token_${r.role.toLowerCase().replace(' ', '_')}`,
+                    });
+                    await proceedToRoleDashboard(r.role);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-750 text-[11px] font-semibold text-slate-300 hover:text-white transition-colors"
+                >
+                  Demo {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
+
+        {/* Loading Overlay */}
+        {isDashboardLoading && (
+          <LoadingSpinner
+            message="Authenticating & Loading Dashboard..."
+            subMessage="Connecting to KitchenOps backend and fetching user role permissions..."
+          />
+        )}
 
         {/* Security Footer Note */}
         <div className="flex items-center justify-center gap-2 text-xs text-slate-500">

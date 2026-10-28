@@ -8,6 +8,7 @@ import { LoginPage } from './domains/auth/LoginPage';
 import { AuthCallbackPage } from './domains/auth/AuthCallbackPage';
 import { UserManagementDashboard } from './domains/admin/UserManagementDashboard';
 import { OperationsOverview } from './domains/overview/OperationsOverview';
+import { OperationsManagerDashboard } from './domains/overview/OperationsManagerDashboard';
 import { CustomerManagementPage } from './domains/customer/CustomerManagementPage';
 import { MenuManagementPage } from './domains/menu/MenuManagementPage';
 import { OrderManagementPage } from './domains/orders/OrderManagementPage';
@@ -15,6 +16,7 @@ import { KitchenDashboardPage } from './domains/kitchen/KitchenDashboardPage';
 import { InventoryManagementPage } from './domains/inventory/InventoryManagementPage';
 import { DispatchManagementPage } from './domains/dispatch/DispatchManagementPage';
 import { ReconciliationPage } from './domains/reconciliation/ReconciliationPage';
+import { getDashboardRouteForRoles } from './utils/roleRouting';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,15 +46,17 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
 /**
  * Role-aware root router:
- * - Admin users automatically land on the Kitchen Admin User Management dashboard (/admin/users)
- * - Operational executives land on the Operations Overview
+ * Evaluates the user's role and navigates to their specific operational dashboard:
+ * - Admin -> /admin/users
+ * - Operations Manager -> /ops/manager
+ * - Operations Executive -> /kitchen
+ * - Management -> /reconciliation
+ * - Delivery Team -> /dispatch
  */
 const RoleAwareIndex: React.FC = () => {
   const { user } = useAuthStore();
-  if (user?.role === 'Admin') {
-    return <Navigate to="/admin/users" replace />;
-  }
-  return <OperationsOverview />;
+  const destination = getDashboardRouteForRoles(user?.role);
+  return <Navigate to={destination} replace />;
 };
 
 export const App: React.FC = () => {
@@ -88,6 +92,7 @@ export const App: React.FC = () => {
               }
             >
               <Route index element={<RoleAwareIndex />} />
+              <Route path="ops/manager" element={<OperationsManagerDashboard />} />
               <Route path="ops" element={<OperationsOverview />} />
               <Route path="customers" element={<CustomerManagementPage />} />
               <Route path="menu" element={<MenuManagementPage />} />
