@@ -15,6 +15,10 @@ export const API_ENDPOINTS = {
     UPDATE_USER: '/admin/update_user',
     GET_USERS: '/admin/get_users',
     GET_ROLES: '/admin/get_roles',
+    CREATE_ROLE: '/admin/create_role',
+    DISABLE_ROLE: '/admin/disable_role',
+    ENABLE_ROLE: '/admin/enable_role',
+    DISABLE_ENABLE_ROLE: '/disable/enable_role',
     USERS: '/auth/users',
   },
   CUSTOMERS: {

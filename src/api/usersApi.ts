@@ -8,6 +8,8 @@ import {
   UserDashboardResponse,
   GetRolesResponse,
   DEFAULT_ENABLED_ROLES_MOCK,
+  DEFAULT_DISABLED_ROLES_MOCK,
+  DEFAULT_ROLE_USER_COUNT_MOCK,
   normalizeUsersDictionary,
   generateNanoId,
 } from '../domains/admin/types';
@@ -65,9 +67,11 @@ export const STITCH_INITIAL_USERS_MOCK: RawUsersDictionary = {
 
 const LOCAL_STORAGE_USERS_KEY = 'tsm_admin_users_dict';
 const LOCAL_STORAGE_ROLES_KEY = 'tsm_admin_roles_dict';
+const LOCAL_STORAGE_DISABLED_ROLES_KEY = 'tsm_admin_disabled_roles_dict';
+const LOCAL_STORAGE_ROLE_USER_COUNTS_KEY = 'tsm_admin_role_user_counts_dict';
 
 /**
- * Retrieves the roles dictionary from localStorage or default mock
+ * Retrieves the enabled roles dictionary from localStorage or default mock
  */
 export function getStoredRoles(): Record<string, string> {
   try {
@@ -81,15 +85,73 @@ export function getStoredRoles(): Record<string, string> {
   } catch {
     // ignore json error
   }
-  return DEFAULT_ENABLED_ROLES_MOCK;
+  return { ...DEFAULT_ENABLED_ROLES_MOCK };
 }
 
 /**
- * Persists the roles dictionary to localStorage
+ * Persists the enabled roles dictionary to localStorage
  */
 export function setStoredRoles(roles: Record<string, string>): void {
   try {
     localStorage.setItem(LOCAL_STORAGE_ROLES_KEY, JSON.stringify(roles));
+  } catch {
+    // ignore storage error
+  }
+}
+
+/**
+ * Retrieves the disabled roles dictionary from localStorage or default mock
+ */
+export function getStoredDisabledRoles(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_DISABLED_ROLES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore json error
+  }
+  return { ...DEFAULT_DISABLED_ROLES_MOCK };
+}
+
+/**
+ * Persists the disabled roles dictionary to localStorage
+ */
+export function setStoredDisabledRoles(roles: Record<string, string>): void {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_DISABLED_ROLES_KEY, JSON.stringify(roles));
+  } catch {
+    // ignore storage error
+  }
+}
+
+/**
+ * Retrieves the role user counts dictionary from localStorage or default mock
+ */
+export function getStoredRoleUserCounts(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_ROLE_USER_COUNTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore json error
+  }
+  return { ...DEFAULT_ROLE_USER_COUNT_MOCK };
+}
+
+/**
+ * Persists the role user counts dictionary to localStorage
+ */
+export function setStoredRoleUserCounts(counts: Record<string, number>): void {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_ROLE_USER_COUNTS_KEY, JSON.stringify(counts));
   } catch {
     // ignore storage error
   }
@@ -445,29 +507,40 @@ export async function logoutApi(): Promise<void> {
  * Calls api/v1/admin/get_roles
  * Request (with JWT Bearer token in header):
  * {
- *   "role_type": "enabled"
+ *   "role_type": "all" | "enabled" | "disabled",
+ *   "user_count": true | false
  * }
  * Response:
  * {
- *   "enabled": {
- *     "role_id_1": "role_name_1",
- *     "role_id_2": "role_name_2"
- *   },
- *   "disabled": {}
+ *   "enabled": { role_id_1: role_name_1, ... },
+ *   "disabled": { role_id_4: role_name_4, ... },
+ *   "user_count": { role_id_1: count_1, ... } (only if user_count: true)
  * }
  */
 export async function getAdminRolesApi(
-  role_type: string = 'enabled'
+  role_type: string = 'enabled',
+  user_count: boolean = false
 ): Promise<GetRolesResponse> {
+  const requestBody: { role_type: string; user_count?: boolean } = {
+    role_type,
+    user_count,
+  };
+
   try {
     const response = await apiClient.post<GetRolesResponse>(
       API_ENDPOINTS.ADMIN.GET_ROLES,
-      { role_type },
+      requestBody,
       { timeout: 6000 }
     );
 
     if (response.data && response.data.enabled && typeof response.data.enabled === 'object') {
       setStoredRoles(response.data.enabled);
+      if (response.data.disabled && typeof response.data.disabled === 'object') {
+        setStoredDisabledRoles(response.data.disabled);
+      }
+      if (response.data.user_count && typeof response.data.user_count === 'object') {
+        setStoredRoleUserCounts(response.data.user_count);
+      }
       return response.data;
     }
   } catch (err) {
@@ -476,7 +549,7 @@ export async function getAdminRolesApi(
       const getResponse = await apiClient.get<GetRolesResponse>(
         API_ENDPOINTS.ADMIN.GET_ROLES,
         {
-          params: { role_type },
+          params: { role_type, user_count },
           timeout: 4000,
         }
       );
@@ -486,6 +559,12 @@ export async function getAdminRolesApi(
         typeof getResponse.data.enabled === 'object'
       ) {
         setStoredRoles(getResponse.data.enabled);
+        if (getResponse.data.disabled && typeof getResponse.data.disabled === 'object') {
+          setStoredDisabledRoles(getResponse.data.disabled);
+        }
+        if (getResponse.data.user_count && typeof getResponse.data.user_count === 'object') {
+          setStoredRoleUserCounts(getResponse.data.user_count);
+        }
         return getResponse.data;
       }
     } catch {
@@ -494,10 +573,244 @@ export async function getAdminRolesApi(
   }
 
   // Fallback to cached or mock roles
-  const cachedRoles = getStoredRoles();
-  return {
-    enabled: cachedRoles,
-    disabled: {},
+  const cachedEnabled = getStoredRoles();
+  const cachedDisabled = getStoredDisabledRoles();
+  const cachedUserCounts = getStoredRoleUserCounts();
+
+  const result: GetRolesResponse = {
+    enabled: cachedEnabled,
+    disabled: cachedDisabled,
     status: true,
   };
+
+  if (user_count) {
+    result.user_count = cachedUserCounts;
+  }
+
+  return result;
+}
+
+/**
+ * Calls api/v1/admin/create_role
+ * Request: { role_name: string } with Bearer JWT
+ * Response: { status: boolean, message: string }
+ */
+export async function createRoleApi(role_name: string): Promise<ApiActionResponse> {
+  const trimmed = role_name.trim();
+  try {
+    const response = await apiClient.post<ApiActionResponse>(
+      API_ENDPOINTS.ADMIN.CREATE_ROLE,
+      { role_name: trimmed },
+      { timeout: 6000 }
+    );
+
+    const { isSuccess, message } = parseApiStatusResponse(response.data);
+
+    if (isSuccess) {
+      // Synchronize local fallback state
+      const enabled = getStoredRoles();
+      const newId = `role_${trimmed.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}_${generateNanoId('r')}`;
+      enabled[newId] = trimmed;
+      setStoredRoles(enabled);
+
+      const counts = getStoredRoleUserCounts();
+      counts[newId] = 0;
+      setStoredRoleUserCounts(counts);
+
+      return {
+        status: true,
+        message: message || `Role "${trimmed}" created successfully.`,
+      };
+    } else {
+      return {
+        status: false,
+        message,
+      };
+    }
+  } catch (err: any) {
+    const errData = err.response?.data;
+    const backendMessage =
+      typeof errData?.message === 'string'
+        ? errData.message
+        : typeof errData?.detail === 'string'
+        ? errData.detail
+        : null;
+
+    if (backendMessage) {
+      return {
+        status: false,
+        message: backendMessage,
+      };
+    }
+
+    // Dev fallback if backend offline
+    const enabled = getStoredRoles();
+    const newId = `role_${trimmed.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15)}_${generateNanoId('r')}`;
+    enabled[newId] = trimmed;
+    setStoredRoles(enabled);
+
+    const counts = getStoredRoleUserCounts();
+    counts[newId] = 0;
+    setStoredRoleUserCounts(counts);
+
+    return {
+      status: true,
+      message: `Role "${trimmed}" created successfully in local mode.`,
+    };
+  }
+}
+
+/**
+ * Calls api/v1/admin/disable_role
+ * Request: { role_id: string } with Bearer JWT
+ * Response: { status: boolean, message: string }
+ */
+export async function disableRoleApi(role_id: string): Promise<ApiActionResponse> {
+  try {
+    const response = await apiClient.post<ApiActionResponse>(
+      API_ENDPOINTS.ADMIN.DISABLE_ROLE,
+      { role_id },
+      { timeout: 6000 }
+    );
+
+    const { isSuccess, message } = parseApiStatusResponse(response.data);
+
+    if (isSuccess) {
+      // Local sync
+      const enabled = getStoredRoles();
+      const disabled = getStoredDisabledRoles();
+      const roleName = enabled[role_id] || role_id;
+      delete enabled[role_id];
+      disabled[role_id] = roleName;
+      setStoredRoles(enabled);
+      setStoredDisabledRoles(disabled);
+
+      const counts = getStoredRoleUserCounts();
+      counts[role_id] = 0;
+      setStoredRoleUserCounts(counts);
+
+      return {
+        status: true,
+        message: message || `Role "${roleName}" has been disabled.`,
+      };
+    } else {
+      return {
+        status: false,
+        message,
+      };
+    }
+  } catch (err: any) {
+    const errData = err.response?.data;
+    const backendMessage =
+      typeof errData?.message === 'string'
+        ? errData.message
+        : typeof errData?.detail === 'string'
+        ? errData.detail
+        : null;
+
+    if (backendMessage) {
+      return {
+        status: false,
+        message: backendMessage,
+      };
+    }
+
+    // Dev fallback
+    const enabled = getStoredRoles();
+    const disabled = getStoredDisabledRoles();
+    const roleName = enabled[role_id] || role_id;
+    delete enabled[role_id];
+    disabled[role_id] = roleName;
+    setStoredRoles(enabled);
+    setStoredDisabledRoles(disabled);
+
+    const counts = getStoredRoleUserCounts();
+    counts[role_id] = 0;
+    setStoredRoleUserCounts(counts);
+
+    return {
+      status: true,
+      message: `Role "${roleName}" disabled successfully in local mode.`,
+    };
+  }
+}
+
+/**
+ * Calls api/v1/disable/enable_role (with fallback to api/v1/admin/enable_role)
+ * Request: { role_id: string } with Bearer JWT
+ * Response: { status: boolean, message: string }
+ */
+export async function enableRoleApi(role_id: string): Promise<ApiActionResponse> {
+  try {
+    let response;
+    try {
+      response = await apiClient.post<ApiActionResponse>(
+        API_ENDPOINTS.ADMIN.DISABLE_ENABLE_ROLE,
+        { role_id },
+        { timeout: 6000 }
+      );
+    } catch (firstErr: any) {
+      // If 404, fallback to /admin/enable_role
+      if (firstErr.response?.status === 404) {
+        response = await apiClient.post<ApiActionResponse>(
+          API_ENDPOINTS.ADMIN.ENABLE_ROLE,
+          { role_id },
+          { timeout: 6000 }
+        );
+      } else {
+        throw firstErr;
+      }
+    }
+
+    const { isSuccess, message } = parseApiStatusResponse(response.data);
+
+    if (isSuccess) {
+      const enabled = getStoredRoles();
+      const disabled = getStoredDisabledRoles();
+      const roleName = disabled[role_id] || role_id;
+      delete disabled[role_id];
+      enabled[role_id] = roleName;
+      setStoredRoles(enabled);
+      setStoredDisabledRoles(disabled);
+
+      return {
+        status: true,
+        message: message || `Role "${roleName}" has been enabled.`,
+      };
+    } else {
+      return {
+        status: false,
+        message,
+      };
+    }
+  } catch (err: any) {
+    const errData = err.response?.data;
+    const backendMessage =
+      typeof errData?.message === 'string'
+        ? errData.message
+        : typeof errData?.detail === 'string'
+        ? errData.detail
+        : null;
+
+    if (backendMessage) {
+      return {
+        status: false,
+        message: backendMessage,
+      };
+    }
+
+    // Dev fallback
+    const enabled = getStoredRoles();
+    const disabled = getStoredDisabledRoles();
+    const roleName = disabled[role_id] || role_id;
+    delete disabled[role_id];
+    enabled[role_id] = roleName;
+    setStoredRoles(enabled);
+    setStoredDisabledRoles(disabled);
+
+    return {
+      status: true,
+      message: `Role "${roleName}" enabled successfully in local mode.`,
+    };
+  }
 }

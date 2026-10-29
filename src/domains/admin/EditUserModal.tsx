@@ -67,7 +67,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
       const fetchRoles = async () => {
         setIsLoadingRoles(true);
         try {
-          const res = await getAdminRolesApi('enabled');
+          const res = await getAdminRolesApi('enabled', false);
           const latestRoles = res?.enabled && Object.keys(res.enabled).length > 0
             ? res.enabled
             : DEFAULT_ENABLED_ROLES_MOCK;

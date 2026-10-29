@@ -88,7 +88,8 @@ export interface UserDashboardResponse {
  * Request payload for api/v1/admin/get_roles
  */
 export interface GetRolesRequest {
-  role_type?: 'enabled' | 'disabled' | string;
+  role_type?: 'enabled' | 'disabled' | 'all' | string;
+  user_count?: boolean;
 }
 
 /**
@@ -98,14 +99,35 @@ export interface GetRolesRequest {
  *     "role_id_1": "role_name_1",
  *     "role_id_2": "role_name_2"
  *   },
- *   "disabled": {}
+ *   "disabled": {
+ *     "role_id_4": "role_name_4"
+ *   },
+ *   "user_count": {
+ *     "role_id_1": 4,
+ *     "role_id_4": 0
+ *   }
  * }
  */
 export interface GetRolesResponse {
   enabled: Record<string, string>;
   disabled?: Record<string, string>;
+  user_count?: Record<string, number>;
   status?: boolean;
   message?: string;
+}
+
+/**
+ * Request payload for api/v1/admin/create_role
+ */
+export interface CreateRoleRequest {
+  role_name: string;
+}
+
+/**
+ * Request payload for api/v1/admin/disable_role and api/v1/disable/enable_role
+ */
+export interface RoleActionRequest {
+  role_id: string;
 }
 
 /**
@@ -114,6 +136,8 @@ export interface GetRolesResponse {
 export interface RoleItem {
   id: string;
   name: string;
+  userCount?: number;
+  enabled?: boolean;
 }
 
 /**
@@ -134,6 +158,38 @@ export const DEFAULT_ENABLED_ROLES_MOCK: Record<string, string> = {
   role_haccp_off: 'Safety & HACCP Officer',
   role_mgmt: 'Management',
   role_delivery: 'Delivery Team',
+};
+
+/**
+ * Default fallback disabled roles dictionary matching Stitch screen
+ */
+export const DEFAULT_DISABLED_ROLES_MOCK: Record<string, string> = {
+  role_dish_pit: 'Dish Pit Lead',
+  role_night_sanit: 'Night Sanitation',
+  role_pastry_appr: 'Pastry Apprentice',
+};
+
+/**
+ * Default fallback role active user count dictionary
+ */
+export const DEFAULT_ROLE_USER_COUNT_MOCK: Record<string, number> = {
+  role_ops_mgr: 5,
+  role_kitch_mgmt: 2,
+  role_station_lead: 11,
+  role_ops_exec: 8,
+  role_saute_lead: 3,
+  role_grill_stn: 8,
+  role_prep_lead: 4,
+  role_expediter: 14,
+  role_inv_spec: 2,
+  role_inv_admin: 3,
+  role_sous_chef: 6,
+  role_haccp_off: 1,
+  role_mgmt: 2,
+  role_delivery: 7,
+  role_dish_pit: 0,
+  role_night_sanit: 0,
+  role_pastry_appr: 0,
 };
 
 /**

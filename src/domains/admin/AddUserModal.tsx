@@ -62,7 +62,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       const fetchRoles = async () => {
         setIsLoadingRoles(true);
         try {
-          const res = await getAdminRolesApi('enabled');
+          const res = await getAdminRolesApi('enabled', false);
           if (res && res.enabled && Object.keys(res.enabled).length > 0) {
             setRolesMap(res.enabled);
           }
